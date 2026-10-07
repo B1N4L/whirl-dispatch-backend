@@ -1,7 +1,7 @@
 import { pgTable, uuid, timestamp, integer, boolean, doublePrecision, text, pgEnum } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { workOrders } from './workOrders.js';
-import { users } from './users.js';
+import { workOrders } from './workOrders';
+import { users } from './users';
 
 export const sessionStatusEnum = pgEnum('session_status', [
   'CLOCKED_IN',

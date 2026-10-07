@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
-import { app } from '../src/app.js';
+import { app } from '../src/app';
 
 describe('Health Check API Smoke Test', () => {
   it('GET /api/health should return 200 with service status telemetry', async () => {

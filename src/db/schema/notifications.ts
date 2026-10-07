@@ -1,7 +1,7 @@
 import { pgTable, uuid, varchar, text, boolean, timestamp, pgEnum } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { users } from './users.js';
-import { workOrders } from './workOrders.js';
+import { users } from './users';
+import { workOrders } from './workOrders';
 
 export const notificationTypeEnum = pgEnum('notification_type', [
   'URGENT_DISPATCH',

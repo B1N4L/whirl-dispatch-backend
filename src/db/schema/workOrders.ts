@@ -1,8 +1,8 @@
 import { pgTable, uuid, varchar, text, timestamp, pgEnum } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { users } from './users.js';
-import { clientFacilities } from './facilities.js';
-import { fleetAssets } from './fleet.js';
+import { users } from './users';
+import { clientFacilities } from './facilities';
+import { fleetAssets } from './fleet';
 
 export const workOrderPriorityEnum = pgEnum('work_order_priority', [
   'LOW',

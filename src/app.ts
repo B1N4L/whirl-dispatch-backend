@@ -3,7 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
-import { healthRouter } from './routes/health.route.js';
+import { healthRouter } from './routes/health.route';
 
 dotenv.config();
 

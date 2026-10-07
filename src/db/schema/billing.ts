@@ -1,8 +1,8 @@
 import { pgTable, uuid, varchar, numeric, timestamp, pgEnum } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { workOrders } from './workOrders.js';
-import { clientFacilities } from './facilities.js';
-import { users } from './users.js';
+import { workOrders } from './workOrders';
+import { clientFacilities } from './facilities';
+import { users } from './users';
 
 export const invoiceStatusEnum = pgEnum('invoice_status', [
   'DRAFT_ESTIMATE',
