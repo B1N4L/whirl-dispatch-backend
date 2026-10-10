@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { healthRouter } from './routes/health.route';
+import { authRouter } from './routes/auth.route';
 
 dotenv.config();
 
@@ -23,6 +24,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Core Route Mounts
 app.use('/api/health', healthRouter);
+app.use('/api/auth', authRouter);
 
 // 404 Catch-All Handler
 app.use((_req: Request, res: Response) => {
