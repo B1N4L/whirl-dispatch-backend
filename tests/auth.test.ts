@@ -46,3 +46,57 @@ describe('Authentication & JWT API Tests', () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe('RBAC Middleware & Biometric Verification Tests', () => {
+  it('RBAC should allow SUPERVISOR and forbid TECHNICIAN on supervisor route', async () => {
+    // 1. Login as Supervisor
+    const supLogin = await request(app).post('/api/auth/login').send({
+      email: 'sarath.supervisor@whirldispatch.com',
+      password: 'password123',
+    });
+    const supToken = supLogin.body.token;
+
+    // 2. Login as Technician
+    const techLogin = await request(app).post('/api/auth/login').send({
+      email: 'nuwan.tech@whirldispatch.com',
+      password: 'password123',
+    });
+    const techToken = techLogin.body.token;
+
+    // Supervisor access should be allowed (200)
+    const supRes = await request(app)
+      .get('/api/auth/supervisor-check')
+      .set('Authorization', `Bearer ${supToken}`);
+    expect(supRes.status).toBe(200);
+    expect(supRes.body.authorized).toBe(true);
+
+    // Technician access should be forbidden (403)
+    const techRes = await request(app)
+      .get('/api/auth/supervisor-check')
+      .set('Authorization', `Bearer ${techToken}`);
+    expect(techRes.status).toBe(403);
+    expect(techRes.body).toHaveProperty('error', 'Forbidden');
+  });
+
+  it('POST /api/auth/biometric-verify should validate biometric session token', async () => {
+    const loginRes = await request(app).post('/api/auth/login').send({
+      email: 'kasun.lead@whirldispatch.com',
+      password: 'password123',
+    });
+    const token = loginRes.body.token;
+
+    const bioRes = await request(app)
+      .post('/api/auth/biometric-verify')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        deviceId: 'IPHONE-15-PRO-FIELD',
+        biometricType: 'FACE_ID',
+      });
+
+    expect(bioRes.status).toBe(200);
+    expect(bioRes.body.verified).toBe(true);
+    expect(bioRes.body.biometricType).toBe('FACE_ID');
+    expect(bioRes.body.role).toBe('LEAD_TECHNICIAN');
+    expect(bioRes.body).toHaveProperty('verifiedAt');
+  });
+});
