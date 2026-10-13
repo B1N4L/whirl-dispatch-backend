@@ -5,6 +5,8 @@ import morgan from 'morgan';
 import dotenv from 'dotenv';
 import { healthRouter } from './routes/health.route';
 import { authRouter } from './routes/auth.route';
+import { facilitiesRouter } from './routes/facilities.route';
+import { fleetRouter } from './routes/fleet.route';
 
 dotenv.config();
 
@@ -25,6 +27,8 @@ app.use(express.urlencoded({ extended: true }));
 // Core Route Mounts
 app.use('/api/health', healthRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/facilities', facilitiesRouter);
+app.use('/api/fleet', fleetRouter);
 
 // 404 Catch-All Handler
 app.use((_req: Request, res: Response) => {
