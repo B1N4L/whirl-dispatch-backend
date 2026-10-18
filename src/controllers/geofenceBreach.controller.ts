@@ -9,7 +9,7 @@ import {
 import { boundaryEventSchema, resumeShiftSchema } from '../schemas/attendance.schema';
 import { isInsideGeofence } from '../utils/haversine';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, isNull } from 'drizzle-orm';
 
 export async function handleBoundaryEvent(req: Request, res: Response): Promise<void> {
   try {
@@ -35,7 +35,7 @@ export async function handleBoundaryEvent(req: Request, res: Response): Promise<
       where: and(
         eq(siteAttendance.workOrderId, workOrderId),
         eq(siteAttendance.technicianId, authUser.userId),
-        eq(siteAttendance.clockOutTimestamp, null as any)
+        isNull(siteAttendance.clockOutTimestamp)
       ),
       orderBy: [desc(siteAttendance.createdAt)],
     });
