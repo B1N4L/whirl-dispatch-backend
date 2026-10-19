@@ -9,6 +9,7 @@ import { facilitiesRouter } from './routes/facilities.route';
 import { fleetRouter } from './routes/fleet.route';
 import { workOrdersRouter } from './routes/workOrder.route';
 import { attendanceRouter } from './routes/attendance.route';
+import { dossierRouter } from './routes/dossier.route';
 
 dotenv.config();
 
@@ -33,6 +34,7 @@ app.use('/api/facilities', facilitiesRouter);
 app.use('/api/fleet', fleetRouter);
 app.use('/api/work-orders', workOrdersRouter);
 app.use('/api/attendance', attendanceRouter);
+app.use('/api/dossiers', dossierRouter);
 
 // 404 Catch-All Handler
 app.use((_req: Request, res: Response) => {
