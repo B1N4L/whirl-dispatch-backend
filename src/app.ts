@@ -11,6 +11,7 @@ import { workOrdersRouter } from './routes/workOrder.route';
 import { attendanceRouter } from './routes/attendance.route';
 import { dossierRouter } from './routes/dossier.route';
 import { expenseRouter } from './routes/expense.route';
+import { billingRouter } from './routes/billing.route';
 
 dotenv.config();
 
@@ -37,6 +38,7 @@ app.use('/api/work-orders', workOrdersRouter);
 app.use('/api/attendance', attendanceRouter);
 app.use('/api/dossiers', dossierRouter);
 app.use('/api/expenses', expenseRouter);
+app.use('/api/billing', billingRouter);
 
 // 404 Catch-All Handler
 app.use((_req: Request, res: Response) => {
