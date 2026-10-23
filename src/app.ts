@@ -12,13 +12,19 @@ import { attendanceRouter } from './routes/attendance.route';
 import { dossierRouter } from './routes/dossier.route';
 import { expenseRouter } from './routes/expense.route';
 import { billingRouter } from './routes/billing.route';
+import { docsRouter } from './routes/docs.route';
+import { notificationsRouter, telemetryRouter } from './routes/notifications.route';
 
 dotenv.config();
 
 export const app: Application = express();
 
 // Security and Utility Middlewares
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+  })
+);
 app.use(
   cors({
     origin: process.env.CORS_ORIGIN || '*',
@@ -39,6 +45,9 @@ app.use('/api/attendance', attendanceRouter);
 app.use('/api/dossiers', dossierRouter);
 app.use('/api/expenses', expenseRouter);
 app.use('/api/billing', billingRouter);
+app.use('/api/docs', docsRouter);
+app.use('/api/notifications', notificationsRouter);
+app.use('/api/telemetry', telemetryRouter);
 
 // 404 Catch-All Handler
 app.use((_req: Request, res: Response) => {

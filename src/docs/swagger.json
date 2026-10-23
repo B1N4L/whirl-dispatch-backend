@@ -1,0 +1,380 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "WhirlDispatch HVAC Field Operations API",
+    "version": "1.0.0",
+    "description": "Enterprise-grade HVAC Field Service Telemetry & Mobile Management Engine supporting iOS iPhone field technicians, iPad supervisors, and payment clerks.",
+    "contact": {
+      "name": "B. L. ALAHAKOON",
+      "email": "info@whirldispatch.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "/api",
+      "description": "Primary WhirlDispatch API Base"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" },
+          "message": { "type": "string" }
+        }
+      },
+      "HealthStatus": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "healthy" },
+          "database": { "type": "string", "example": "connected" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "email": { "type": "string", "format": "email" },
+          "fullName": { "type": "string" },
+          "phone": { "type": "string" },
+          "role": { "type": "string", "enum": ["TECHNICIAN", "LEAD_TECHNICIAN", "SUPERVISOR", "PAYMENT_CLERK"] },
+          "hourlyLaborRate": { "type": "string" },
+          "biometricEnrolled": { "type": "boolean" },
+          "isActive": { "type": "boolean" }
+        }
+      },
+      "ClientFacility": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "companyName": { "type": "string" },
+          "facilityName": { "type": "string" },
+          "address": { "type": "string" },
+          "latitude": { "type": "number" },
+          "longitude": { "type": "number" },
+          "geofenceRadius": { "type": "number" },
+          "contractHourlyRate": { "type": "string" },
+          "partsMarkupPercent": { "type": "string" }
+        }
+      },
+      "WorkOrder": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "clientFacilityId": { "type": "string", "format": "uuid" },
+          "supervisorId": { "type": "string", "format": "uuid" },
+          "leadTechnicianId": { "type": "string", "format": "uuid" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "priority": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL_EMERGENCY"] },
+          "status": { "type": "string", "enum": ["DISPATCHED", "EN_ROUTE", "ON_SITE_ACTIVE", "UNACKNOWLEDGED_BREAK", "AWAITING_PARTS_APPROVAL", "COMPLETED", "BILLED", "CANCELLED"] },
+          "scheduledStartTime": { "type": "string", "format": "date-time" },
+          "scheduledEndTime": { "type": "string", "format": "date-time" }
+        }
+      },
+      "SiteAttendance": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "workOrderId": { "type": "string", "format": "uuid" },
+          "technicianId": { "type": "string", "format": "uuid" },
+          "clockInTimestamp": { "type": "string", "format": "date-time" },
+          "clockOutTimestamp": { "type": "string", "format": "date-time" },
+          "totalBillableSeconds": { "type": "integer" },
+          "totalBreakSeconds": { "type": "integer" },
+          "sessionStatus": { "type": "string", "enum": ["ACTIVE_ON_SITE", "ON_BREAK_VIOLATION", "CLOCKED_OUT"] }
+        }
+      },
+      "DiagnosticDossier": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "workOrderId": { "type": "string", "format": "uuid" },
+          "equipmentModel": { "type": "string" },
+          "baselineSuctionPressurePsi": { "type": "string" },
+          "postServiceSuctionPressurePsi": { "type": "string" },
+          "isCompleted": { "type": "boolean" }
+        }
+      },
+      "ExpenseClaim": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "workOrderId": { "type": "string", "format": "uuid" },
+          "vendorName": { "type": "string" },
+          "totalAmount": { "type": "string" },
+          "approvalStatus": { "type": "string", "enum": ["PENDING_SUPERVISOR_APPROVAL", "APPROVED", "FLAGGED_REJECTED"] }
+        }
+      },
+      "BillingInvoice": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "invoiceNumber": { "type": "string" },
+          "workOrderId": { "type": "string", "format": "uuid" },
+          "grandTotal": { "type": "string" },
+          "status": { "type": "string", "enum": ["DRAFT_ESTIMATE", "APPROVED_BY_SUPERVISOR", "ISSUED_TO_CLIENT", "PAID"] }
+        }
+      },
+      "SystemNotification": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "recipientUserId": { "type": "string", "format": "uuid" },
+          "notificationType": { "type": "string" },
+          "title": { "type": "string" },
+          "body": { "type": "string" },
+          "isRead": { "type": "boolean" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "WidgetTelemetry": {
+        "type": "object",
+        "properties": {
+          "technicianId": { "type": "string", "format": "uuid" },
+          "technicianName": { "type": "string" },
+          "hasActiveShift": { "type": "boolean" },
+          "shiftStatus": { "type": "string" },
+          "elapsedMinutes": { "type": "integer" },
+          "widgetDisplay": {
+            "type": "object",
+            "properties": {
+              "headline": { "type": "string" },
+              "subline": { "type": "string" },
+              "statusColorHex": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "System Health Status",
+        "tags": ["System"],
+        "responses": {
+          "200": {
+            "description": "Server and database status",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthStatus" } } }
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "summary": "Authenticate user credentials",
+        "tags": ["Authentication"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string", "format": "email" },
+                  "password": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "JWT issued successfully" },
+          "401": { "description": "Invalid credentials" }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "summary": "Get authenticated user profile",
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Authentication"],
+        "responses": {
+          "200": { "description": "Profile data" }
+        }
+      }
+    },
+    "/auth/biometric-verify": {
+      "post": {
+        "summary": "Verify Face ID / Touch ID session",
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Authentication"],
+        "responses": {
+          "200": { "description": "Biometric session validated" }
+        }
+      }
+    },
+    "/facilities": {
+      "get": {
+        "summary": "List client facilities",
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Facilities & Fleet"],
+        "responses": {
+          "200": { "description": "Array of facilities" }
+        }
+      },
+      "post": {
+        "summary": "Create client facility",
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Facilities & Fleet"],
+        "responses": {
+          "201": { "description": "Facility created" }
+        }
+      }
+    },
+    "/fleet": {
+      "get": {
+        "summary": "List fleet assets",
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Facilities & Fleet"],
+        "responses": {
+          "200": { "description": "Array of fleet assets" }
+        }
+      }
+    },
+    "/work-orders": {
+      "get": {
+        "summary": "List dispatched work orders",
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Work Orders"],
+        "responses": {
+          "200": { "description": "Array of work orders" }
+        }
+      },
+      "post": {
+        "summary": "Dispatch work order",
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Work Orders"],
+        "responses": {
+          "201": { "description": "Work order dispatched" }
+        }
+      }
+    },
+    "/work-orders/{id}": {
+      "get": {
+        "summary": "Get work order details and EventKit calendar payload",
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Work Orders"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "Work order with EventKit payload" }
+        }
+      }
+    },
+    "/attendance/clock-in": {
+      "post": {
+        "summary": "Clock in with geofence and biometric verification",
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Attendance & Telemetry"],
+        "responses": {
+          "201": { "description": "Clocked in successfully" },
+          "400": { "description": "Out of geofence perimeter" }
+        }
+      }
+    },
+    "/attendance/clock-out": {
+      "post": {
+        "summary": "Clock out and compute billable shift duration",
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Attendance & Telemetry"],
+        "responses": {
+          "200": { "description": "Clocked out" }
+        }
+      }
+    },
+    "/dossiers": {
+      "post": {
+        "summary": "Create or update diagnostic sensor dossier",
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Diagnostic Dossiers"],
+        "responses": {
+          "201": { "description": "Dossier saved" }
+        }
+      }
+    },
+    "/dossiers/work-order/{id}": {
+      "get": {
+        "summary": "Get dossier, checklists, and proof photos",
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Diagnostic Dossiers"],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "Complete diagnostic dossier" }
+        }
+      }
+    },
+    "/expenses": {
+      "post": {
+        "summary": "Submit emergency parts expense claim",
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Expense Ledger"],
+        "responses": {
+          "201": { "description": "Expense submitted" }
+        }
+      }
+    },
+    "/billing/estimate/{workOrderId}": {
+      "post": {
+        "summary": "Compile automated billing estimate",
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Billing & Invoicing"],
+        "parameters": [
+          { "name": "workOrderId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "201": { "description": "Invoice compiled" }
+        }
+      }
+    },
+    "/billing/analytics/{workOrderId}": {
+      "get": {
+        "summary": "Retrieve Swift Charts financial telemetry",
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Billing & Invoicing"],
+        "parameters": [
+          { "name": "workOrderId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "Swift Charts payload" }
+        }
+      }
+    },
+    "/notifications": {
+      "get": {
+        "summary": "Get unread push notification queue",
+        "security": [{ "bearerAuth": [] }],
+        "tags": ["Notifications & WidgetKit"],
+        "responses": {
+          "200": { "description": "Notification feed" }
+        }
+      }
+    },
+    "/telemetry/widget/{technicianId}": {
+      "get": {
+        "summary": "Get live shift telemetry for iOS WidgetKit widgets",
+        "tags": ["Notifications & WidgetKit"],
+        "parameters": [
+          { "name": "technicianId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "WidgetKit telemetry data" }
+        }
+      }
+    }
+  }
+}
