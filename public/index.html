@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WhirlDispatch Backend API</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      box-sizing: border-box;
+      padding: 16px;
+    }
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 32px;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 12px 28px rgba(0,0,0,0.5);
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      background: #238636;
+      color: #ffffff;
+      margin-bottom: 16px;
+      letter-spacing: 0.5px;
+    }
+    h1 {
+      font-size: 22px;
+      margin: 0 0 8px 0;
+      color: #f0f6fc;
+      font-weight: 700;
+    }
+    p {
+      color: #8b949e;
+      margin: 0 0 24px 0;
+      line-height: 1.5;
+      font-size: 14px;
+    }
+    .links a {
+      display: block;
+      color: #58a6ff;
+      text-decoration: none;
+      padding: 10px 14px;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      font-size: 13px;
+      font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, monospace;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .links a:hover {
+      background: #21262d;
+      border-color: #58a6ff;
+    }
+    .footer {
+      margin-top: 24px;
+      font-size: 11px;
+      color: #6e7681;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="badge">SYSTEM ONLINE</span>
+    <h1>WhirlDispatch API</h1>
+    <p>Enterprise HVAC Field Service Mobile Management Engine &bull; Version 1.0.0</p>
+    <div class="links">
+      <a href="/api">&rarr; Status: /api</a>
+      <a href="/api/health">&rarr; Health: /api/health</a>
+      <a href="/api/docs">&rarr; OpenAPI Docs: /api/docs</a>
+      <a href="/api/docs/json">&rarr; OpenAPI Spec: /api/docs/json</a>
+    </div>
+    <div class="footer">
+      NIBM / Coventry University BSc (Hons) Computing &bull; WhirlDispatch Platform
+    </div>
+  </div>
+</body>
+</html>
