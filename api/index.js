@@ -3557,8 +3557,8 @@ app.use((err, _req, res, _next) => {
   });
 });
 
-// api/index.ts
-var index_default = app;
+// src/serverless.ts
+var serverless_default = app;
 export {
-  index_default as default
+  serverless_default as default
 };
