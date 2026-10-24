@@ -45,6 +45,20 @@ app.use('/api/docs', docsRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/telemetry', telemetryRouter);
 
+// Root Index Status Route
+app.get('/', (_req: Request, res: Response) => {
+  res.status(200).json({
+    service: 'WhirlDispatch Backend API',
+    status: 'online',
+    version: '1.0.0',
+    endpoints: {
+      health: '/api/health',
+      docs: '/api/docs',
+      docsJson: '/api/docs/json',
+    },
+  });
+});
+
 // 404 Catch-All Handler
 app.use((_req: Request, res: Response) => {
   res.status(404).json({
