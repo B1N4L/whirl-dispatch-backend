@@ -1,9 +1,16 @@
 {
   "version": 2,
-  "rewrites": [
+  "redirects": [
     {
       "source": "/",
-      "destination": "/api/health"
+      "destination": "/api",
+      "permanent": false
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api"
     }
   ]
 }
