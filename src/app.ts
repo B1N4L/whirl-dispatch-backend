@@ -46,7 +46,7 @@ app.use('/api/notifications', notificationsRouter);
 app.use('/api/telemetry', telemetryRouter);
 
 // Root Index Status Route
-app.get('/', (_req: Request, res: Response) => {
+app.get(['/', '/api'], (_req: Request, res: Response) => {
   res.status(200).json({
     service: 'WhirlDispatch Backend API',
     status: 'online',
