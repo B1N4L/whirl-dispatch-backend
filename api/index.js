@@ -3531,7 +3531,7 @@ app.use("/api/billing", billingRouter);
 app.use("/api/docs", docsRouter);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/telemetry", telemetryRouter);
-app.get("/", (_req, res) => {
+app.get(["/", "/api"], (_req, res) => {
   res.status(200).json({
     service: "WhirlDispatch Backend API",
     status: "online",
