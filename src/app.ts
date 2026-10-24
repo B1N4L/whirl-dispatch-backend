@@ -14,6 +14,7 @@ import { expenseRouter } from './routes/expense.route';
 import { billingRouter } from './routes/billing.route';
 import { docsRouter } from './routes/docs.route';
 import { notificationsRouter, telemetryRouter } from './routes/notifications.route';
+import { corsMiddleware } from './config/cors';
 
 dotenv.config();
 
@@ -25,12 +26,7 @@ app.use(
     contentSecurityPolicy: false,
   })
 );
-app.use(
-  cors({
-    origin: process.env.CORS_ORIGIN || '*',
-    credentials: true,
-  })
-);
+app.use(corsMiddleware);
 app.use(morgan('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
