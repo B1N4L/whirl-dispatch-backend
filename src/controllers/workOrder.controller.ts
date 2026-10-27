@@ -138,6 +138,8 @@ export async function createWorkOrder(req: Request, res: Response): Promise<void
       message: 'Work order created and dispatched successfully.',
       workOrder: {
         ...newWorkOrder,
+        facility,
+        fleetAsset: assignedAsset,
         facilityName: facility.facilityName,
         assignedFleetAsset: assignedAsset ? assignedAsset.assetCode : null,
       },
