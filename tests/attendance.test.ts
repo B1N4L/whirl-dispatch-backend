@@ -247,5 +247,45 @@ describe('Anti-Ghost Clocking & Geofence Site Attendance Telemetry APIs', () => 
       expect(eventTypes).toContain('BIOMETRIC_REAUTH_RESUME');
       expect(eventTypes).toContain('BREAK_PAUSED');
     });
+
+    it('POST /api/attendance/clock-in should allow second clock-in on same day after clocking out', async () => {
+      // 1. Clock in a second time
+      const clockInRes = await request(app)
+        .post('/api/attendance/clock-in')
+        .set('Authorization', `Bearer ${leadTechToken}`)
+        .send({
+          workOrderId,
+          latitude: facilityLat,
+          longitude: facilityLng,
+          accuracyMeters: 5.0,
+          biometricVerified: true,
+        });
+
+      expect(clockInRes.status).toBe(201);
+      expect(clockInRes.body.session.sessionStatus).toBe('ACTIVE_ON_SITE');
+
+      // 2. Query GET /api/attendance/current
+      const currentRes = await request(app)
+        .get('/api/attendance/current')
+        .set('Authorization', `Bearer ${leadTechToken}`);
+
+      expect(currentRes.status).toBe(200);
+      expect(currentRes.body.active).toBe(true);
+      expect(currentRes.body.session.id).toBe(clockInRes.body.session.id);
+
+      // 3. Clock out second session
+      const clockOutRes = await request(app)
+        .post('/api/attendance/clock-out')
+        .set('Authorization', `Bearer ${leadTechToken}`)
+        .send({
+          workOrderId,
+          latitude: facilityLat,
+          longitude: facilityLng,
+          accuracyMeters: 5.0,
+        });
+
+      expect(clockOutRes.status).toBe(200);
+      expect(clockOutRes.body.session.sessionStatus).toBe('CLOCKED_OUT');
+    });
   });
 });

@@ -77,12 +77,12 @@ export async function clockIn(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    // 4. Check if technician already has an active session
+    // 4. Check if technician already has an active (unclosed) session
     const activeSession = await db.query.siteAttendance.findFirst({
       where: and(
         eq(siteAttendance.workOrderId, workOrderId),
         eq(siteAttendance.technicianId, authUser.userId),
-        eq(siteAttendance.sessionStatus, 'ACTIVE_ON_SITE')
+        isNull(siteAttendance.clockOutTimestamp)
       ),
     });
 
@@ -174,7 +174,7 @@ export async function clockOut(req: Request, res: Response): Promise<void> {
     const { workOrderId, latitude, longitude, accuracyMeters } = parseResult.data;
 
     // 1. Find active or break-paused attendance session
-    const activeSession = await db.query.siteAttendance.findFirst({
+    let activeSession = await db.query.siteAttendance.findFirst({
       where: and(
         eq(siteAttendance.workOrderId, workOrderId),
         eq(siteAttendance.technicianId, authUser.userId),
@@ -182,6 +182,17 @@ export async function clockOut(req: Request, res: Response): Promise<void> {
       ),
       orderBy: [desc(siteAttendance.createdAt)],
     });
+
+    // Fallback: If technician changed selected work order in UI, find any unclosed session for this technician
+    if (!activeSession) {
+      activeSession = await db.query.siteAttendance.findFirst({
+        where: and(
+          eq(siteAttendance.technicianId, authUser.userId),
+          isNull(siteAttendance.clockOutTimestamp)
+        ),
+        orderBy: [desc(siteAttendance.createdAt)],
+      });
+    }
 
     if (!activeSession) {
       res.status(404).json({
@@ -270,6 +281,40 @@ export async function getAttendanceTimeline(req: Request, res: Response): Promis
     res.status(500).json({
       error: 'InternalServerError',
       message: 'Failed to retrieve attendance timeline.',
+    });
+  }
+}
+
+export async function getCurrentActiveAttendance(req: Request, res: Response): Promise<void> {
+  try {
+    const authUser = (req as AuthenticatedRequest).user;
+    if (!authUser) {
+      res.status(401).json({ error: 'Unauthorized', message: 'Authentication required.' });
+      return;
+    }
+
+    const activeSession = await db.query.siteAttendance.findFirst({
+      where: and(
+        eq(siteAttendance.technicianId, authUser.userId),
+        isNull(siteAttendance.clockOutTimestamp)
+      ),
+      with: {
+        workOrder: {
+          with: { facility: true },
+        },
+      },
+      orderBy: [desc(siteAttendance.createdAt)],
+    });
+
+    res.status(200).json({
+      active: !!activeSession,
+      session: activeSession || null,
+    });
+  } catch (error) {
+    console.error('[ATTENDANCE ERROR] Get current active attendance failed:', error);
+    res.status(500).json({
+      error: 'InternalServerError',
+      message: 'Failed to retrieve active attendance status.',
     });
   }
 }
