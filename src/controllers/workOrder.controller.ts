@@ -169,7 +169,7 @@ export async function getWorkOrders(req: Request, res: Response): Promise<void> 
         facility: true,
         fleetAsset: true,
         leadTechnician: {
-          columns: { id: true, fullName: true, email: true, phone: true },
+          columns: { id: true, fullName: true, email: true, phone: true, role: true, hourlyLaborRate: true },
         },
         supervisor: {
           columns: { id: true, fullName: true, email: true },
@@ -177,7 +177,7 @@ export async function getWorkOrders(req: Request, res: Response): Promise<void> 
         assignments: {
           with: {
             technician: {
-              columns: { id: true, fullName: true, email: true, phone: true },
+              columns: { id: true, fullName: true, email: true, phone: true, role: true, hourlyLaborRate: true },
             },
           },
         },
@@ -224,7 +224,7 @@ export async function getWorkOrderDetail(req: Request, res: Response): Promise<v
         facility: true,
         fleetAsset: true,
         leadTechnician: {
-          columns: { id: true, fullName: true, email: true, phone: true },
+          columns: { id: true, fullName: true, email: true, phone: true, role: true, hourlyLaborRate: true },
         },
         supervisor: {
           columns: { id: true, fullName: true, email: true },
@@ -232,7 +232,7 @@ export async function getWorkOrderDetail(req: Request, res: Response): Promise<v
         assignments: {
           with: {
             technician: {
-              columns: { id: true, fullName: true, email: true, phone: true },
+              columns: { id: true, fullName: true, email: true, phone: true, role: true, hourlyLaborRate: true },
             },
           },
         },

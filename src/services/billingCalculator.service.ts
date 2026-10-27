@@ -7,12 +7,22 @@ import {
 } from '../db/schema/index';
 import { eq, and } from 'drizzle-orm';
 
+export interface LaborBreakdownItem {
+  technicianId: string;
+  technicianName: string;
+  role: string;
+  hourlyRate: number;
+  billableHours: number;
+  subtotal: number;
+}
+
 export interface BillingCalculationResult {
   workOrderId: string;
   clientFacilityId: string;
   totalBillableLaborHours: number;
   hourlyLaborRateApplied: number;
   subtotalLabor: number;
+  laborBreakdown: LaborBreakdownItem[];
   subtotalApprovedParts: number;
   partsMarkupPercentApplied: number;
   subtotalPartsWithMarkup: number;
@@ -25,14 +35,21 @@ export interface BillingCalculationResult {
 }
 
 export async function compileWorkOrderBillingMetrics(
-  workOrderId: string
+  workOrderId: string,
+  partsMarkupOverride?: number
 ): Promise<BillingCalculationResult> {
-  // 1. Fetch work order with facility and assigned fleet
+  // 1. Fetch work order with facility, lead technician, assignments, and assigned fleet
   const workOrder = await db.query.workOrders.findFirst({
     where: eq(workOrders.id, workOrderId),
     with: {
       facility: true,
       fleetAsset: true,
+      leadTechnician: true,
+      assignments: {
+        with: {
+          technician: true,
+        },
+      },
     },
   });
 
@@ -40,28 +57,81 @@ export async function compileWorkOrderBillingMetrics(
     throw new Error(`Work order '${workOrderId}' not found.`);
   }
 
-  // 2. Fetch site attendance records to sum billable labor
+  // 2. Fetch site attendance records with technician details
   const attendanceSessions = await db.query.siteAttendance.findMany({
     where: eq(siteAttendance.workOrderId, workOrderId),
+    with: {
+      technician: true,
+    },
   });
 
-  let totalBillableSeconds = attendanceSessions.reduce(
-    (acc, session) => acc + (session.totalBillableSeconds || 0),
-    0
-  );
+  // Group verified billable seconds by individual technician
+  const techMap = new Map<string, {
+    name: string;
+    role: string;
+    hourlyRate: number;
+    seconds: number;
+  }>();
 
-  // If no attendance sessions exist, fallback to scheduled/actual duration (minimum 2 hours)
-  let totalBillableLaborHours = 0;
-  if (totalBillableSeconds > 0) {
-    totalBillableLaborHours = +(totalBillableSeconds / 3600).toFixed(2);
-  } else {
-    // Default 2.5 billable hours if not tracked
-    totalBillableLaborHours = 2.5;
+  for (const session of attendanceSessions) {
+    const techId = session.technicianId;
+    const tech = session.technician;
+    const rate = parseFloat(tech?.hourlyLaborRate || '60.00');
+    const existing = techMap.get(techId) || {
+      name: tech?.fullName || 'Technician',
+      role: tech?.role || 'TECHNICIAN',
+      hourlyRate: rate,
+      seconds: 0,
+    };
+    existing.seconds += session.totalBillableSeconds || 0;
+    techMap.set(techId, existing);
   }
 
-  // 3. Labor rate applied
-  const hourlyRate = parseFloat(workOrder.facility.contractHourlyRate) || 5000.0;
-  const subtotalLabor = +(totalBillableLaborHours * hourlyRate).toFixed(2);
+  const laborBreakdown: LaborBreakdownItem[] = [];
+  let totalBillableLaborHours = 0;
+  let subtotalLabor = 0;
+
+  if (techMap.size > 0 && Array.from(techMap.values()).some((t) => t.seconds > 0)) {
+    for (const [techId, data] of techMap.entries()) {
+      const hours = +(data.seconds / 3600).toFixed(2);
+      const sub = +(hours * data.hourlyRate).toFixed(2);
+      totalBillableLaborHours += hours;
+      subtotalLabor += sub;
+      laborBreakdown.push({
+        technicianId: techId,
+        technicianName: data.name,
+        role: data.role,
+        hourlyRate: data.hourlyRate,
+        billableHours: hours,
+        subtotal: sub,
+      });
+    }
+    totalBillableLaborHours = +totalBillableLaborHours.toFixed(2);
+    subtotalLabor = +subtotalLabor.toFixed(2);
+  } else {
+    // Option B Fallback: Use Lead Technician fixed hourly rate with baseline 2.5 hours
+    const leadTech = workOrder.leadTechnician;
+    const leadRate = parseFloat(leadTech?.hourlyLaborRate || '85.00');
+    const defaultHours = 2.5;
+    const leadSub = +(defaultHours * leadRate).toFixed(2);
+
+    laborBreakdown.push({
+      technicianId: workOrder.leadTechnicianId,
+      technicianName: leadTech?.fullName || 'Lead Technician',
+      role: leadTech?.role || 'LEAD_TECHNICIAN',
+      hourlyRate: leadRate,
+      billableHours: defaultHours,
+      subtotal: leadSub,
+    });
+
+    totalBillableLaborHours = defaultHours;
+    subtotalLabor = leadSub;
+  }
+
+  // 3. Effective blended hourly rate applied
+  const hourlyLaborRateApplied = totalBillableLaborHours > 0
+    ? +(subtotalLabor / totalBillableLaborHours).toFixed(2)
+    : 85.00;
 
   // 4. Fetch approved expense claims
   const approvedClaims = await db.query.expenseClaims.findMany({
@@ -75,7 +145,11 @@ export async function compileWorkOrderBillingMetrics(
     .reduce((acc, claim) => acc + parseFloat(claim.totalAmount), 0)
     .toFixed(2);
 
-  const partsMarkupPercent = parseFloat(workOrder.facility.partsMarkupPercent) || 15.0;
+  // Apply markup: payment clerk override or facility contract default
+  const facilityMarkup = parseFloat(workOrder.facility.partsMarkupPercent) || 15.0;
+  const partsMarkupPercent = typeof partsMarkupOverride === 'number' && partsMarkupOverride >= 0
+    ? partsMarkupOverride
+    : facilityMarkup;
   const markupFactor = 1 + partsMarkupPercent / 100;
   const subtotalPartsWithMarkup = +(subtotalApprovedParts * markupFactor).toFixed(2);
 
@@ -103,8 +177,9 @@ export async function compileWorkOrderBillingMetrics(
     workOrderId,
     clientFacilityId: workOrder.clientFacilityId,
     totalBillableLaborHours,
-    hourlyLaborRateApplied: hourlyRate,
+    hourlyLaborRateApplied,
     subtotalLabor,
+    laborBreakdown,
     subtotalApprovedParts,
     partsMarkupPercentApplied: partsMarkupPercent,
     subtotalPartsWithMarkup,

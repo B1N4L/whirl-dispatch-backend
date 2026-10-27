@@ -32,8 +32,11 @@ export async function generateEstimate(req: Request, res: Response): Promise<voi
     }
 
     const workOrderId = req.params.workOrderId as string;
+    const partsMarkupOverride = typeof req.body?.partsMarkupPercent === 'number'
+      ? req.body.partsMarkupPercent
+      : undefined;
 
-    const calculation = await compileWorkOrderBillingMetrics(workOrderId);
+    const calculation = await compileWorkOrderBillingMetrics(workOrderId, partsMarkupOverride);
 
     // Check if invoice already exists for this work order
     const existingInvoice = await db.query.billingInvoices.findFirst({
@@ -64,6 +67,7 @@ export async function generateEstimate(req: Request, res: Response): Promise<voi
       res.status(200).json({
         message: 'Billing estimate re-compiled and updated successfully.',
         invoice: updated,
+        calculation,
       });
       return;
     }
@@ -95,12 +99,51 @@ export async function generateEstimate(req: Request, res: Response): Promise<voi
     res.status(201).json({
       message: 'Official billing estimate compiled successfully.',
       invoice: newInvoice,
+      calculation,
     });
   } catch (error: any) {
     console.error('[BILLING ERROR] Generate estimate failed:', error);
     res.status(500).json({
       error: 'InternalServerError',
       message: error.message || 'Failed to compile billing estimate.',
+    });
+  }
+}
+
+export async function previewEstimate(req: Request, res: Response): Promise<void> {
+  try {
+    const authUser = (req as AuthenticatedRequest).user;
+    if (!authUser) {
+      res.status(401).json({ error: 'Unauthorized', message: 'Authentication required.' });
+      return;
+    }
+
+    const workOrderId = req.params.workOrderId as string;
+    const markupParam = req.query.partsMarkupPercent
+      ? parseFloat(req.query.partsMarkupPercent as string)
+      : undefined;
+
+    const calculation = await compileWorkOrderBillingMetrics(workOrderId, markupParam);
+
+    const existingInvoice = await db.query.billingInvoices.findFirst({
+      where: eq(billingInvoices.workOrderId, workOrderId),
+      with: {
+        facility: true,
+        clerk: {
+          columns: { id: true, fullName: true, email: true, role: true },
+        },
+      },
+    });
+
+    res.status(200).json({
+      calculation,
+      existingInvoice: existingInvoice || null,
+    });
+  } catch (error: any) {
+    console.error('[BILLING ERROR] Preview estimate failed:', error);
+    res.status(500).json({
+      error: 'InternalServerError',
+      message: error.message || 'Failed to preview billing estimate.',
     });
   }
 }

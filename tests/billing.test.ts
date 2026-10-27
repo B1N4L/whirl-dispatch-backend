@@ -184,6 +184,19 @@ describe('Payment Clerk Cost Estimation, Invoicing & Swift Charts Telemetry APIs
       expect(res.status).toBe(200);
       expect(res.body.invoice.id).toBe(invoiceId);
     });
+
+    it('GET /api/billing/estimate/:workOrderId should allow previewing calculation with labor breakdown', async () => {
+      const res = await request(app)
+        .get(`/api/billing/estimate/${workOrderId}`)
+        .set('Authorization', `Bearer ${clerkToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.calculation).toBeDefined();
+      expect(res.body.calculation.laborBreakdown).toBeInstanceOf(Array);
+      expect(res.body.calculation.laborBreakdown.length).toBeGreaterThan(0);
+      expect(res.body.calculation.laborBreakdown[0].role).toBeDefined();
+      expect(res.body.calculation.laborBreakdown[0].hourlyRate).toBeGreaterThan(0);
+    });
   });
 
   describe('Invoice Status Lifecycle & Work Order Sync', () => {

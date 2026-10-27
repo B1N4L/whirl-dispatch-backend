@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   generateEstimate,
+  previewEstimate,
   getInvoice,
   updateInvoiceStatus,
 } from '../controllers/billing.controller';
@@ -11,6 +12,12 @@ import { requireRole } from '../middleware/rbac.middleware';
 export const billingRouter = Router();
 
 billingRouter.use(authenticateToken);
+
+billingRouter.get(
+  '/estimate/:workOrderId',
+  requireRole(['PAYMENT_CLERK', 'SUPERVISOR']),
+  previewEstimate
+);
 
 billingRouter.post(
   '/estimate/:workOrderId',
