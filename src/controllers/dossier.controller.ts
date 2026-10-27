@@ -22,6 +22,10 @@ export async function createOrUpdateDossier(req: Request, res: Response): Promis
       return;
     }
 
+    if (!req.body.workOrderId && req.params.id) {
+      req.body.workOrderId = req.params.id;
+    }
+
     const parseResult = createOrUpdateDossierSchema.safeParse(req.body);
     if (!parseResult.success) {
       res.status(400).json({
