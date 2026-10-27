@@ -32,6 +32,25 @@ export async function generateEstimate(req: Request, res: Response): Promise<voi
     }
 
     const workOrderId = req.params.workOrderId as string;
+
+    // Verify work order status: Clerks cannot bill in-progress work
+    const targetOrder = await db.query.workOrders.findFirst({
+      where: eq(workOrders.id, workOrderId),
+    });
+
+    if (!targetOrder) {
+      res.status(404).json({ error: 'NotFound', message: 'Work order dispatch not found.' });
+      return;
+    }
+
+    if (authUser.role === 'PAYMENT_CLERK' && targetOrder.status !== 'COMPLETED' && targetOrder.status !== 'BILLED') {
+      res.status(400).json({
+        error: 'WorkOrderInProgress',
+        message: 'Invoicing is restricted for in-progress work orders. The dispatch must be COMPLETED before an invoice can be compiled or issued.',
+      });
+      return;
+    }
+
     const partsMarkupOverride = typeof req.body?.partsMarkupPercent === 'number'
       ? req.body.partsMarkupPercent
       : undefined;
@@ -119,6 +138,24 @@ export async function previewEstimate(req: Request, res: Response): Promise<void
     }
 
     const workOrderId = req.params.workOrderId as string;
+
+    const targetOrder = await db.query.workOrders.findFirst({
+      where: eq(workOrders.id, workOrderId),
+    });
+
+    if (!targetOrder) {
+      res.status(404).json({ error: 'NotFound', message: 'Work order dispatch not found.' });
+      return;
+    }
+
+    if (authUser.role === 'PAYMENT_CLERK' && targetOrder.status !== 'COMPLETED' && targetOrder.status !== 'BILLED') {
+      res.status(400).json({
+        error: 'WorkOrderInProgress',
+        message: 'Cannot preview estimate for in-progress work order. The dispatch must be COMPLETED.',
+      });
+      return;
+    }
+
     const markupParam = req.query.partsMarkupPercent
       ? parseFloat(req.query.partsMarkupPercent as string)
       : undefined;

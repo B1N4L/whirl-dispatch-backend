@@ -184,13 +184,21 @@ export async function getWorkOrders(req: Request, res: Response): Promise<void> 
       },
     });
 
-    // Role-based filtering: Technicians only see jobs they are assigned to
+    // Role-based filtering:
+    // 1. Technicians only see jobs they are assigned to
     if (authUser.role === 'TECHNICIAN' || authUser.role === 'LEAD_TECHNICIAN') {
       allOrders = allOrders.filter((wo) => {
         const isLead = wo.leadTechnicianId === authUser.userId;
         const isAssigned = wo.assignments.some((a) => a.technicianId === authUser.userId);
         return isLead || isAssigned;
       });
+    }
+
+    // 2. Payment Clerks only see dispatches that are finished and ready for invoicing (COMPLETED or BILLED)
+    if (authUser.role === 'PAYMENT_CLERK') {
+      allOrders = allOrders.filter(
+        (wo) => wo.status === 'COMPLETED' || wo.status === 'BILLED'
+      );
     }
 
     // Optional query param filters

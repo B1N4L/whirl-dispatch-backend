@@ -140,7 +140,36 @@ describe('Payment Clerk Cost Estimation, Invoicing & Swift Charts Telemetry APIs
       expect(res.body.error).toBe('Forbidden');
     });
 
-    it('POST /api/billing/estimate/:workOrderId should allow Payment Clerk to compile official estimate', async () => {
+    it('POST /api/billing/estimate/:workOrderId should reject billing when work order is in progress', async () => {
+      const res = await request(app)
+        .post(`/api/billing/estimate/${workOrderId}`)
+        .set('Authorization', `Bearer ${clerkToken}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe('WorkOrderInProgress');
+    });
+
+    it('GET /api/work-orders should hide in-progress dispatches from Payment Clerk', async () => {
+      const clerkOrdersRes = await request(app)
+        .get('/api/work-orders')
+        .set('Authorization', `Bearer ${clerkToken}`);
+
+      expect(clerkOrdersRes.status).toBe(200);
+      const orders = clerkOrdersRes.body.workOrders;
+      const inProgressFound = orders.some(
+        (o: any) => o.status !== 'COMPLETED' && o.status !== 'BILLED'
+      );
+      expect(inProgressFound).toBe(false);
+    });
+
+    it('POST /api/billing/estimate/:workOrderId should allow Payment Clerk to compile estimate once completed', async () => {
+      // Supervisor transitions work order to COMPLETED
+      const statusRes = await request(app)
+        .patch(`/api/work-orders/${workOrderId}/status`)
+        .set('Authorization', `Bearer ${supervisorToken}`)
+        .send({ status: 'COMPLETED' });
+      expect(statusRes.status).toBe(200);
+
       const res = await request(app)
         .post(`/api/billing/estimate/${workOrderId}`)
         .set('Authorization', `Bearer ${clerkToken}`);
