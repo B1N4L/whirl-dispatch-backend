@@ -3,6 +3,7 @@ import {
   createWorkOrder,
   getWorkOrders,
   getWorkOrderDetail,
+  getTeamTelemetry,
 } from '../controllers/workOrder.controller';
 import { updateWorkOrderStatus } from '../controllers/workOrderStatus.controller';
 import { authenticateToken } from '../middleware/auth.middleware';
@@ -14,5 +15,6 @@ workOrdersRouter.use(authenticateToken);
 
 workOrdersRouter.get('/', getWorkOrders);
 workOrdersRouter.get('/:id', getWorkOrderDetail);
+workOrdersRouter.get('/:id/team-telemetry', getTeamTelemetry);
 workOrdersRouter.post('/', requireRole(['SUPERVISOR']), createWorkOrder);
 workOrdersRouter.patch('/:id/status', updateWorkOrderStatus);

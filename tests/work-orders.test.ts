@@ -175,5 +175,29 @@ describe('Work Order Dispatch & EventKit Scheduling APIs', () => {
         .set('Authorization', `Bearer ${supervisorToken}`);
       expect(assetRes.body.asset.status).toBe('AVAILABLE');
     });
+
+    it('GET /api/work-orders/:id/team-telemetry should return team coordinates and geofence metrics for Lead Tech', async () => {
+      const res = await request(app)
+        .get(`/api/work-orders/${createdWorkOrderId}/team-telemetry`)
+        .set('Authorization', `Bearer ${leadTechToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('workOrderId', createdWorkOrderId);
+      expect(res.body.facility).toHaveProperty('geofenceRadius');
+      expect(Array.isArray(res.body.team)).toBe(true);
+      expect(res.body.team.length).toBeGreaterThan(0);
+      expect(res.body.team[0]).toHaveProperty('isInsideGeofence');
+      expect(res.body.team[0]).toHaveProperty('distanceToFacilityMeters');
+      expect(res.body.team[0]).toHaveProperty('formattedDistance');
+    });
+
+    it('GET /api/work-orders/:id/team-telemetry should reject unauthorized technicians without lead/supervisor role', async () => {
+      const res = await request(app)
+        .get(`/api/work-orders/${createdWorkOrderId}/team-telemetry`)
+        .set('Authorization', `Bearer ${unassignedTechToken}`);
+
+      expect(res.status).toBe(403);
+      expect(res.body).toHaveProperty('error', 'Forbidden');
+    });
   });
 });
