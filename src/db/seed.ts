@@ -6,23 +6,45 @@ import {
   fleetAssets,
   workOrders,
   workOrderAssignments,
+  siteAttendance,
   diagnosticDossiers,
   checklistItems,
   expenseClaims,
   expenseItems,
   billingInvoices,
 } from './schema/index';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 async function seed() {
   console.log('[SEED] Initializing WhirlDispatch database seeder via unpooled connection...');
 
-  // 1. Seed Users across all 4 operational roles
+  // Reset all database tables for a fresh, clean state
+  console.log('[SEED] Resetting database tables for fresh clean state...');
+  await unpooledDb.execute(sql`
+    TRUNCATE TABLE
+      billing_invoices,
+      expense_items,
+      expense_claims,
+      checklist_items,
+      diagnostic_dossiers,
+      geofence_audit_logs,
+      site_attendance,
+      system_notifications,
+      work_order_assignments,
+      work_orders,
+      fleet_assets,
+      client_facilities,
+      users
+    CASCADE;
+  `);
+
+  // 1. Seed Users across all operational roles with multiple Lead Technicians & Technicians
   console.log('[SEED] Seeding RBAC user accounts...');
   const saltRounds = 10;
   const defaultPasswordHash = await bcrypt.hash('password123', saltRounds);
 
   const sampleUsers = [
+    // Supervisor
     {
       email: 'sarath.supervisor@whirldispatch.com',
       passwordHash: defaultPasswordHash,
@@ -33,6 +55,7 @@ async function seed() {
       biometricEnrolled: true,
       isActive: true,
     },
+    // Lead Technicians (5 field leads)
     {
       email: 'kasun.lead@whirldispatch.com',
       passwordHash: defaultPasswordHash,
@@ -43,6 +66,47 @@ async function seed() {
       biometricEnrolled: true,
       isActive: true,
     },
+    {
+      email: 'rohan.lead@whirldispatch.com',
+      passwordHash: defaultPasswordHash,
+      fullName: 'Rohan Jayawardena',
+      phone: '+94 77 234 5678',
+      role: 'LEAD_TECHNICIAN' as const,
+      hourlyLaborRate: '90.00',
+      biometricEnrolled: true,
+      isActive: true,
+    },
+    {
+      email: 'chaminda.lead@whirldispatch.com',
+      passwordHash: defaultPasswordHash,
+      fullName: 'Chaminda Wickramasinghe',
+      phone: '+94 71 345 6789',
+      role: 'LEAD_TECHNICIAN' as const,
+      hourlyLaborRate: '88.00',
+      biometricEnrolled: true,
+      isActive: true,
+    },
+    {
+      email: 'tharindu.lead@whirldispatch.com',
+      passwordHash: defaultPasswordHash,
+      fullName: 'Tharindu Alwis',
+      phone: '+94 72 456 7890',
+      role: 'LEAD_TECHNICIAN' as const,
+      hourlyLaborRate: '85.00',
+      biometricEnrolled: true,
+      isActive: true,
+    },
+    {
+      email: 'sanjeewa.lead@whirldispatch.com',
+      passwordHash: defaultPasswordHash,
+      fullName: 'Sanjeewa Kumara',
+      phone: '+94 77 567 8901',
+      role: 'LEAD_TECHNICIAN' as const,
+      hourlyLaborRate: '82.00',
+      biometricEnrolled: true,
+      isActive: true,
+    },
+    // Field Technicians (8 crew technicians)
     {
       email: 'nuwan.tech@whirldispatch.com',
       passwordHash: defaultPasswordHash,
@@ -63,6 +127,67 @@ async function seed() {
       biometricEnrolled: false,
       isActive: true,
     },
+    {
+      email: 'asanka.tech@whirldispatch.com',
+      passwordHash: defaultPasswordHash,
+      fullName: 'Asanka Senanayake',
+      phone: '+94 76 678 9012',
+      role: 'TECHNICIAN' as const,
+      hourlyLaborRate: '62.00',
+      biometricEnrolled: true,
+      isActive: true,
+    },
+    {
+      email: 'malik.tech@whirldispatch.com',
+      passwordHash: defaultPasswordHash,
+      fullName: 'Malik Gunawardena',
+      phone: '+94 75 789 0123',
+      role: 'TECHNICIAN' as const,
+      hourlyLaborRate: '58.00',
+      biometricEnrolled: true,
+      isActive: true,
+    },
+    {
+      email: 'pradeep.tech@whirldispatch.com',
+      passwordHash: defaultPasswordHash,
+      fullName: 'Pradeep Rathnayake',
+      phone: '+94 78 890 1234',
+      role: 'TECHNICIAN' as const,
+      hourlyLaborRate: '60.00',
+      biometricEnrolled: true,
+      isActive: true,
+    },
+    {
+      email: 'ravindu.tech@whirldispatch.com',
+      passwordHash: defaultPasswordHash,
+      fullName: 'Ravindu Madushanka',
+      phone: '+94 71 901 2345',
+      role: 'TECHNICIAN' as const,
+      hourlyLaborRate: '56.00',
+      biometricEnrolled: false,
+      isActive: true,
+    },
+    {
+      email: 'kavinda.tech@whirldispatch.com',
+      passwordHash: defaultPasswordHash,
+      fullName: 'Kavinda Jayasuriya',
+      phone: '+94 70 012 3456',
+      role: 'TECHNICIAN' as const,
+      hourlyLaborRate: '58.00',
+      biometricEnrolled: true,
+      isActive: true,
+    },
+    {
+      email: 'lahiru.tech@whirldispatch.com',
+      passwordHash: defaultPasswordHash,
+      fullName: 'Lahiru Dissanayake',
+      phone: '+94 77 112 2334',
+      role: 'TECHNICIAN' as const,
+      hourlyLaborRate: '54.00',
+      biometricEnrolled: true,
+      isActive: true,
+    },
+    // Payment Clerk
     {
       email: 'anusha.clerk@whirldispatch.com',
       passwordHash: defaultPasswordHash,
@@ -141,6 +266,38 @@ async function seed() {
       contractHourlyRate: '85.00',
       partsMarkupPercent: '15.00',
     },
+    {
+      companyName: 'Dialog Axiata PLC',
+      facilityName: 'Dialog Axiata Data Center Plant Room',
+      address: '475 Union Place, Colombo 02, Sri Lanka',
+      latitude: 6.9180,
+      longitude: 79.8620,
+      geofenceRadius: 100.0,
+      contactPersonName: 'Sunil Perera (Data Center Facilities Lead)',
+      contactPhone: '+94 11 710 0100',
+      contactEmail: 'sunil.p@dialog.lk',
+      contractStartDate: new Date('2026-01-01T00:00:00Z'),
+      contractEndDate: new Date('2027-12-31T23:59:59Z'),
+      slaResponseHours: 2,
+      contractHourlyRate: '95.00',
+      partsMarkupPercent: '18.00',
+    },
+    {
+      companyName: 'Cargills (Ceylon) PLC',
+      facilityName: 'Cargills Central Logistics Hub Chiller Room',
+      address: '40 York Street, Colombo 01, Sri Lanka',
+      latitude: 6.9350,
+      longitude: 79.8430,
+      geofenceRadius: 150.0,
+      contactPersonName: 'Ruwan Jayasuriya (Cold Chain Operations)',
+      contactPhone: '+94 11 242 7777',
+      contactEmail: 'ruwan.j@cargillsceylon.com',
+      contractStartDate: new Date('2026-02-01T00:00:00Z'),
+      contractEndDate: new Date('2027-01-31T23:59:59Z'),
+      slaResponseHours: 2,
+      contractHourlyRate: '88.00',
+      partsMarkupPercent: '16.00',
+    },
   ];
 
   const seededFacilities: Record<string, string> = {};
@@ -158,7 +315,7 @@ async function seed() {
     }
   }
 
-  // 3. Seed Fleet Assets
+  // 3. Seed Fleet Assets and service vehicles
   console.log('[SEED] Seeding fleet assets and heavy equipment...');
   const sampleFleet = [
     {
@@ -182,6 +339,27 @@ async function seed() {
       licensePlate: 'WP-CAB-7707',
       status: 'AVAILABLE' as const,
     },
+    {
+      assetCode: 'VAN-11',
+      name: 'Toyota HiAce Commuter Service Van #11',
+      assetType: 'VAN' as const,
+      licensePlate: 'WP-CAC-1111',
+      status: 'AVAILABLE' as const,
+    },
+    {
+      assetCode: 'TRUCK-05',
+      name: 'Isuzu Elf 5-Ton Refrigerant Recovery Truck #05',
+      assetType: 'SERVICE_TRUCK' as const,
+      licensePlate: 'WP-LB-5005',
+      status: 'AVAILABLE' as const,
+    },
+    {
+      assetCode: 'TRAILER-01',
+      name: 'Heavy Duty Chiller Rigging Trailer #01',
+      assetType: 'RECOVERY_TRAILER' as const,
+      licensePlate: 'WP-TR-7001',
+      status: 'AVAILABLE' as const,
+    },
   ];
 
   const seededFleet: Record<string, string> = {};
@@ -199,20 +377,29 @@ async function seed() {
     }
   }
 
-  // 4. Seed Sample Work Orders
+  // 4. Seed Sample Work Orders across various lifecycle stages
   console.log('[SEED] Seeding sample work orders and dispatches...');
   const supervisorId = seededUsers['sarath.supervisor@whirldispatch.com'];
-  const leadTechId = seededUsers['kasun.lead@whirldispatch.com'];
+  const lead1Id = seededUsers['kasun.lead@whirldispatch.com'];
+  const lead2Id = seededUsers['rohan.lead@whirldispatch.com'];
+  const lead3Id = seededUsers['chaminda.lead@whirldispatch.com'];
+  const lead4Id = seededUsers['tharindu.lead@whirldispatch.com'];
+
   const tech1Id = seededUsers['nuwan.tech@whirldispatch.com'];
   const tech2Id = seededUsers['dinesh.tech@whirldispatch.com'];
+  const tech3Id = seededUsers['asanka.tech@whirldispatch.com'];
+  const tech4Id = seededUsers['malik.tech@whirldispatch.com'];
+  const tech5Id = seededUsers['pradeep.tech@whirldispatch.com'];
+  const tech6Id = seededUsers['ravindu.tech@whirldispatch.com'];
   const clerkId = seededUsers['anusha.clerk@whirldispatch.com'];
 
   const sampleWorkOrders = [
+    // Completed work order with full diagnostic dossier, receipts, and invoice
     {
       workOrderNumber: 'WO-2026-0001',
       clientFacilityId: seededFacilities['Hemas HQ Mechanical Plant Room'],
       supervisorId,
-      leadTechnicianId: leadTechId,
+      leadTechnicianId: lead1Id,
       assignedFleetAssetId: seededFleet['VAN-04'],
       title: 'York Centrifugal Chiller High Pressure Lockout',
       description: 'Emergency breakdown: Primary York Centrifugal Chiller tripped on high head pressure. Plant room ambient temperature rising rapidly.',
@@ -222,20 +409,54 @@ async function seed() {
       scheduledEndTime: new Date('2026-10-04T15:00:00Z'),
       actualStartTime: new Date('2026-10-04T09:15:00Z'),
       actualEndTime: new Date('2026-10-04T14:45:00Z'),
+      crew: [tech1Id, tech2Id],
     },
+    // Active on-site work order with live attendance session
     {
       workOrderNumber: 'WO-2026-0002',
       clientFacilityId: seededFacilities['WTC West Tower Basement Chiller Plant'],
       supervisorId,
-      leadTechnicianId: leadTechId,
+      leadTechnicianId: lead2Id,
       assignedFleetAssetId: seededFleet['CRANE-02'],
       title: 'Trane Series R Helical Rotary Condenser Coil Overhaul',
       description: 'Scheduled quarterly descaling of shell-and-tube condensers and inspection of 415V variable frequency drive contacts.',
       priority: 'HIGH' as const,
       status: 'ON_SITE_ACTIVE' as const,
-      scheduledStartTime: new Date('2026-10-08T08:30:00Z'),
-      scheduledEndTime: new Date('2026-10-08T16:00:00Z'),
-      actualStartTime: new Date('2026-10-08T08:42:00Z'),
+      scheduledStartTime: new Date('2026-10-27T08:00:00Z'),
+      scheduledEndTime: new Date('2026-10-27T16:00:00Z'),
+      actualStartTime: new Date('2026-10-27T08:30:00Z'),
+      crew: [tech3Id, tech4Id],
+    },
+    // En-route emergency work order
+    {
+      workOrderNumber: 'WO-2026-0003',
+      clientFacilityId: seededFacilities['Cinnamon Grand AHU & Cooling Tower Roof Plant'],
+      supervisorId,
+      leadTechnicianId: lead3Id,
+      assignedFleetAssetId: seededFleet['VAN-07'],
+      title: 'Carrier AquaForce 30XA Chiller Refrigerant Leak Isolation',
+      description: 'Critical emergency: Low suction pressure trip triggered on Circuit A. Leak isolation and electronic sniffing required immediately.',
+      priority: 'CRITICAL_EMERGENCY' as const,
+      status: 'EN_ROUTE' as const,
+      scheduledStartTime: new Date('2026-10-27T10:00:00Z'),
+      scheduledEndTime: new Date('2026-10-27T14:00:00Z'),
+      actualStartTime: new Date('2026-10-27T10:15:00Z'),
+      crew: [tech5Id],
+    },
+    // Dispatched scheduled work order
+    {
+      workOrderNumber: 'WO-2026-0004',
+      clientFacilityId: seededFacilities['Dialog Axiata Data Center Plant Room'],
+      supervisorId,
+      leadTechnicianId: lead4Id,
+      assignedFleetAssetId: seededFleet['TRUCK-05'],
+      title: 'Precision Air Handling Unit Blower Belt Replacement',
+      description: 'Server Room 03 precision AHU blower fan belt frayed and slipping. Static pressure below 120 Pa.',
+      priority: 'MEDIUM' as const,
+      status: 'DISPATCHED' as const,
+      scheduledStartTime: new Date('2026-10-27T14:00:00Z'),
+      scheduledEndTime: new Date('2026-10-27T18:00:00Z'),
+      crew: [tech6Id],
     },
   ];
 
@@ -247,14 +468,49 @@ async function seed() {
     let woId = existing?.id;
 
     if (!existing) {
-      const [inserted] = await unpooledDb.insert(workOrders).values(wo).returning({ id: workOrders.id });
+      const [inserted] = await unpooledDb
+        .insert(workOrders)
+        .values({
+          workOrderNumber: wo.workOrderNumber,
+          clientFacilityId: wo.clientFacilityId,
+          supervisorId: wo.supervisorId,
+          leadTechnicianId: wo.leadTechnicianId,
+          assignedFleetAssetId: wo.assignedFleetAssetId,
+          title: wo.title,
+          description: wo.description,
+          priority: wo.priority,
+          status: wo.status,
+          scheduledStartTime: wo.scheduledStartTime,
+          scheduledEndTime: wo.scheduledEndTime,
+          actualStartTime: wo.actualStartTime ?? null,
+          actualEndTime: wo.actualEndTime ?? null,
+        })
+        .returning({ id: workOrders.id });
+
       woId = inserted.id;
 
-      // Assign team members
-      await unpooledDb.insert(workOrderAssignments).values([
-        { workOrderId: woId, technicianId: tech1Id },
-        { workOrderId: woId, technicianId: tech2Id },
-      ]);
+      // Assign team crew members
+      if (wo.crew && wo.crew.length > 0) {
+        await unpooledDb.insert(workOrderAssignments).values(
+          wo.crew.map((techId) => ({
+            workOrderId: woId!,
+            technicianId: techId,
+          }))
+        );
+      }
+    }
+
+    // Active attendance session for WO-2026-0002
+    if (wo.workOrderNumber === 'WO-2026-0002' && woId) {
+      await unpooledDb.insert(siteAttendance).values({
+        workOrderId: woId,
+        technicianId: lead2Id,
+        clockInTimestamp: new Date('2026-10-27T08:30:00Z'),
+        clockOutTimestamp: null,
+        totalBillableSeconds: 7200,
+        totalBreakSeconds: 600,
+        sessionStatus: 'ACTIVE_ON_SITE',
+      });
     }
 
     // 5. Seed Diagnostic Dossier for Completed WO-2026-0001
@@ -269,7 +525,7 @@ async function seed() {
           .insert(diagnosticDossiers)
           .values({
             workOrderId: woId,
-            leadTechnicianId: leadTechId,
+            leadTechnicianId: lead1Id,
             equipmentModel: 'York YK Centrifugal Liquid Chiller 500TR',
             equipmentSerialNumber: 'YK-500-SR-2019-041',
             baselineSuctionPressurePsi: '48.50',
@@ -331,7 +587,7 @@ async function seed() {
           .insert(expenseClaims)
           .values({
             workOrderId: woId,
-            leadTechnicianId: leadTechId,
+            leadTechnicianId: lead1Id,
             vendorName: 'Lanka Copper & AC Fittings Ltd',
             receiptNumber: 'REC-LK-90412',
             totalAmount: '18500.00',
