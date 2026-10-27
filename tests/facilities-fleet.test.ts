@@ -136,5 +136,39 @@ describe('Facilities & Fleet Management APIs', () => {
       expect(res.status).toBe(200);
       expect(res.body.asset.status).toBe('DEPLOYED');
     });
+
+    it('GET /api/fleet/tracking should return real-time tracking telemetry for active dispatches', async () => {
+      const res = await request(app)
+        .get('/api/fleet/tracking')
+        .set('Authorization', `Bearer ${supervisorToken}`);
+
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.trackedSites)).toBe(true);
+      expect(typeof res.body.count).toBe('number');
+
+      if (res.body.trackedSites.length > 0) {
+        const site = res.body.trackedSites[0];
+        expect(site).toHaveProperty('workOrderId');
+        expect(site).toHaveProperty('workOrderNumber');
+        expect(site).toHaveProperty('facility');
+        expect(site.facility).toHaveProperty('latitude');
+        expect(site.facility).toHaveProperty('longitude');
+        expect(site).toHaveProperty('team');
+        expect(site).toHaveProperty('telemetry');
+        expect(site.telemetry).toHaveProperty('latitude');
+        expect(site.telemetry).toHaveProperty('longitude');
+        expect(site.telemetry).toHaveProperty('isInsideGeofence');
+        expect(site.telemetry).toHaveProperty('formattedDistance');
+      }
+    });
+
+    it('GET /api/fleet/live-tracking should match /api/fleet/tracking response schema', async () => {
+      const res = await request(app)
+        .get('/api/fleet/live-tracking')
+        .set('Authorization', `Bearer ${technicianToken}`);
+
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.trackedSites)).toBe(true);
+    });
   });
 });
