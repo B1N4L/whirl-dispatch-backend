@@ -232,5 +232,16 @@ describe('Field Expense Ledger & Receipt Audit Pipeline APIs', () => {
       expect(summary.rejectedClaimsCount).toBe(1);
       expect(summary.pendingClaimsCount).toBe(0);
     });
+
+    it('GET /api/expenses should return all company expense claims for supervisor review', async () => {
+      const res = await request(app)
+        .get('/api/expenses')
+        .set('Authorization', `Bearer ${supervisorToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.count).toBeGreaterThanOrEqual(2);
+      expect(Array.isArray(res.body.expenses)).toBe(true);
+      expect(Array.isArray(res.body.claims)).toBe(true);
+    });
   });
 });

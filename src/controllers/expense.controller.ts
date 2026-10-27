@@ -192,3 +192,73 @@ export async function getExpensesByWorkOrder(req: Request, res: Response): Promi
     });
   }
 }
+
+export async function getAllExpenses(req: Request, res: Response): Promise<void> {
+  try {
+    const authUser = (req as AuthenticatedRequest).user;
+    if (!authUser) {
+      res.status(401).json({ error: 'Unauthorized', message: 'Authentication required.' });
+      return;
+    }
+
+    const statusParam = req.query.status as string | undefined;
+
+    const whereClause =
+      statusParam &&
+      ['PENDING_SUPERVISOR_APPROVAL', 'APPROVED', 'FLAGGED_REJECTED'].includes(statusParam)
+        ? eq(expenseClaims.approvalStatus, statusParam as any)
+        : undefined;
+
+    const claims = await db.query.expenseClaims.findMany({
+      where: whereClause,
+      with: {
+        leadTechnician: {
+          columns: { id: true, fullName: true, email: true },
+        },
+        reviewedBySupervisor: {
+          columns: { id: true, fullName: true, email: true },
+        },
+        items: true,
+      },
+      orderBy: [desc(expenseClaims.createdAt)],
+    });
+
+    let totalClaimed = 0;
+    let totalApproved = 0;
+    let pendingCount = 0;
+    let approvedCount = 0;
+    let rejectedCount = 0;
+
+    for (const claim of claims) {
+      const amount = parseFloat(claim.totalAmount);
+      totalClaimed += amount;
+      if (claim.approvalStatus === 'APPROVED') {
+        totalApproved += amount;
+        approvedCount++;
+      } else if (claim.approvalStatus === 'PENDING_SUPERVISOR_APPROVAL') {
+        pendingCount++;
+      } else if (claim.approvalStatus === 'FLAGGED_REJECTED') {
+        rejectedCount++;
+      }
+    }
+
+    res.status(200).json({
+      count: claims.length,
+      expenses: claims,
+      claims,
+      financialSummary: {
+        totalClaimedAmount: +totalClaimed.toFixed(2),
+        totalApprovedAmount: +totalApproved.toFixed(2),
+        pendingClaimsCount: pendingCount,
+        approvedClaimsCount: approvedCount,
+        rejectedClaimsCount: rejectedCount,
+      },
+    });
+  } catch (error) {
+    console.error('[EXPENSE ERROR] Fetch all claims failed:', error);
+    res.status(500).json({
+      error: 'InternalServerError',
+      message: 'Failed to retrieve expense claims.',
+    });
+  }
+}
