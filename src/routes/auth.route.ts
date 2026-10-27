@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { login, register, getProfile } from '../controllers/auth.controller';
+import { login, register, getProfile, updateProfile, changePassword } from '../controllers/auth.controller';
 import { biometricVerify } from '../controllers/biometric.controller';
 import { authenticateToken } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
@@ -9,6 +9,8 @@ export const authRouter = Router();
 authRouter.post('/login', login);
 authRouter.post('/register', register);
 authRouter.get('/me', authenticateToken, getProfile);
+authRouter.patch('/profile', authenticateToken, updateProfile);
+authRouter.post('/change-password', authenticateToken, changePassword);
 authRouter.post('/biometric-verify', authenticateToken, biometricVerify);
 
 // Protected supervisor check endpoint to test RBAC enforcement

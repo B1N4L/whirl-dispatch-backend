@@ -45,6 +45,91 @@ describe('Authentication & JWT API Tests', () => {
     const res = await request(app).get('/api/auth/me');
     expect(res.status).toBe(401);
   });
+
+  it('PATCH /api/auth/profile should update profile fields and return fresh JWT token', async () => {
+    const loginRes = await request(app).post('/api/auth/login').send({
+      email: 'nuwan.tech@whirldispatch.com',
+      password: 'password123',
+    });
+    const token = loginRes.body.token;
+
+    const patchRes = await request(app)
+      .patch('/api/auth/profile')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        phone: '+94 77 123 9999',
+      });
+
+    expect(patchRes.status).toBe(200);
+    expect(patchRes.body.user).toHaveProperty('phone', '+94 77 123 9999');
+    expect(patchRes.body).toHaveProperty('token');
+  });
+
+  it('PATCH /api/auth/profile should reject email conflict if already used by another user', async () => {
+    const loginRes = await request(app).post('/api/auth/login').send({
+      email: 'nuwan.tech@whirldispatch.com',
+      password: 'password123',
+    });
+    const token = loginRes.body.token;
+
+    const conflictRes = await request(app)
+      .patch('/api/auth/profile')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        email: 'sarath.supervisor@whirldispatch.com',
+      });
+
+    expect(conflictRes.status).toBe(409);
+    expect(conflictRes.body).toHaveProperty('error', 'Conflict');
+  });
+
+  it('POST /api/auth/change-password should validate old password and update to new password', async () => {
+    const loginRes = await request(app).post('/api/auth/login').send({
+      email: 'anusha.clerk@whirldispatch.com',
+      password: 'password123',
+    });
+    expect(loginRes.status).toBe(200);
+    const token = loginRes.body.token;
+
+    // Reject wrong current password
+    const failRes = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        currentPassword: 'wrong_password_current',
+        newPassword: 'newpassword456',
+      });
+    expect(failRes.status).toBe(400);
+    expect(failRes.body).toHaveProperty('error', 'InvalidCredentials');
+
+    // Succeed with correct current password
+    const successRes = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        currentPassword: 'password123',
+        newPassword: 'newpassword456',
+      });
+    expect(successRes.status).toBe(200);
+    expect(successRes.body.message).toBe('Password changed successfully');
+
+    // Login with new password
+    const newLoginRes = await request(app).post('/api/auth/login').send({
+      email: 'anusha.clerk@whirldispatch.com',
+      password: 'newpassword456',
+    });
+    expect(newLoginRes.status).toBe(200);
+
+    // Revert password back so downstream tests and seed users remain consistent
+    const revertRes = await request(app)
+      .post('/api/auth/change-password')
+      .set('Authorization', `Bearer ${newLoginRes.body.token}`)
+      .send({
+        currentPassword: 'newpassword456',
+        newPassword: 'password123',
+      });
+    expect(revertRes.status).toBe(200);
+  });
 });
 
 describe('RBAC Middleware & Biometric Verification Tests', () => {
