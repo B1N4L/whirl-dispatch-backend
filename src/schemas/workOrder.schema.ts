@@ -30,3 +30,12 @@ export const updateWorkOrderStatusSchema = z.object({
 
 export type CreateWorkOrderInput = z.infer<typeof createWorkOrderSchema>;
 export type UpdateWorkOrderStatusInput = z.infer<typeof updateWorkOrderStatusSchema>;
+
+export const recordTelemetrySchema = z.object({
+  latitude: z.number().min(-90).max(90, 'Valid latitude required'),
+  longitude: z.number().min(-180).max(180, 'Valid longitude required'),
+  accuracyMeters: z.number().min(0).default(5.0),
+  batteryLevel: z.number().int().min(0).max(100).optional(),
+});
+
+export type RecordTelemetryInput = z.infer<typeof recordTelemetrySchema>;

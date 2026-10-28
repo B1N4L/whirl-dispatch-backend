@@ -199,5 +199,53 @@ describe('Work Order Dispatch & EventKit Scheduling APIs', () => {
       expect(res.status).toBe(403);
       expect(res.body).toHaveProperty('error', 'Forbidden');
     });
+
+    it('POST /api/work-orders/:id/telemetry should reject unauthorized technicians not assigned to job', async () => {
+      const res = await request(app)
+        .post(`/api/work-orders/${createdWorkOrderId}/telemetry`)
+        .set('Authorization', `Bearer ${unassignedTechToken}`)
+        .send({
+          latitude: 6.9271,
+          longitude: 79.8612,
+          accuracyMeters: 4.5,
+          batteryLevel: 92,
+        });
+
+      expect(res.status).toBe(403);
+      expect(res.body).toHaveProperty('error', 'Forbidden');
+    });
+
+    it('POST /api/work-orders/:id/telemetry should allow assigned Lead Tech to log periodic GPS ping', async () => {
+      const res = await request(app)
+        .post(`/api/work-orders/${createdWorkOrderId}/telemetry`)
+        .set('Authorization', `Bearer ${leadTechToken}`)
+        .send({
+          latitude: 6.9344,
+          longitude: 79.8428,
+          accuracyMeters: 3.2,
+          batteryLevel: 87,
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('success');
+      expect(res.body.telemetry.latitude).toBe(6.9344);
+      expect(res.body.telemetry.longitude).toBe(79.8428);
+      expect(res.body.telemetry.batteryLevel).toBe(87);
+      expect(res.body.telemetry).toHaveProperty('distanceMeters');
+      expect(res.body.telemetry).toHaveProperty('isInsideGeofence');
+    });
+
+    it('GET /api/work-orders/:id/team-telemetry should return updated live position and battery level', async () => {
+      const res = await request(app)
+        .get(`/api/work-orders/${createdWorkOrderId}/team-telemetry`)
+        .set('Authorization', `Bearer ${leadTechToken}`);
+
+      expect(res.status).toBe(200);
+      const leadMember = res.body.team.find((m: any) => m.isLead);
+      expect(leadMember).toBeDefined();
+      expect(leadMember.latitude).toBe(6.9344);
+      expect(leadMember.longitude).toBe(79.8428);
+      expect(leadMember.batteryLevel).toBe(87);
+    });
   });
 });
