@@ -7,6 +7,7 @@ describe('Work Order Dispatch & EventKit Scheduling APIs', () => {
   let leadTechToken: string;
   let leadTechId: string;
   let unassignedTechToken: string;
+  let unassignedTechId: string;
   let facilityId: string;
   let fleetAssetId: string;
   let createdWorkOrderId: string;
@@ -33,6 +34,7 @@ describe('Work Order Dispatch & EventKit Scheduling APIs', () => {
       password: 'password123',
     });
     unassignedTechToken = unassignedLogin.body.token;
+    unassignedTechId = unassignedLogin.body.user.id;
 
     // 4. Fetch a seeded facility (Hemas HQ)
     const facRes = await request(app)
@@ -97,6 +99,47 @@ describe('Work Order Dispatch & EventKit Scheduling APIs', () => {
         .get(`/api/fleet/${fleetAssetId}`)
         .set('Authorization', `Bearer ${supervisorToken}`);
       expect(assetRes.body.asset.status).toBe('DEPLOYED');
+    });
+
+    it('POST /api/work-orders should reject assigning a technician who is already on an active dispatch', async () => {
+      const res = await request(app)
+        .post('/api/work-orders')
+        .set('Authorization', `Bearer ${supervisorToken}`)
+        .send({
+          clientFacilityId: facilityId,
+          leadTechnicianId: leadTechId,
+          assignedTechnicianIds: [],
+          title: 'Concurrent Dispatch Conflict Test',
+          description: 'This attempt must fail because the lead technician is already dispatched.',
+          priority: 'HIGH',
+          scheduledStartTime: new Date().toISOString(),
+          scheduledEndTime: new Date(Date.now() + 7200000).toISOString(),
+        });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe('TechnicianUnavailable');
+      expect(res.body.message).toContain('already assigned to active dispatch');
+    });
+
+    it('POST /api/work-orders should reject deploying a fleet asset that is already deployed', async () => {
+      const res = await request(app)
+        .post('/api/work-orders')
+        .set('Authorization', `Bearer ${supervisorToken}`)
+        .send({
+          clientFacilityId: facilityId,
+          leadTechnicianId: unassignedTechId,
+          assignedFleetAssetId: fleetAssetId,
+          assignedTechnicianIds: [],
+          title: 'Concurrent Fleet Deployment Conflict Test',
+          description: 'This attempt must fail because the fleet vehicle is already deployed.',
+          priority: 'MEDIUM',
+          scheduledStartTime: new Date().toISOString(),
+          scheduledEndTime: new Date(Date.now() + 7200000).toISOString(),
+        });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error).toBe('AssetUnavailable');
+      expect(res.body.message).toContain('currently deployed');
     });
 
     it('GET /api/work-orders should return dispatches and filter appropriately', async () => {

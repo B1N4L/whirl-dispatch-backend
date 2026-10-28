@@ -544,6 +544,15 @@ var registerSchema = z.object({
   role: z.enum(["TECHNICIAN", "LEAD_TECHNICIAN", "SUPERVISOR", "PAYMENT_CLERK"]),
   hourlyLaborRate: z.string().regex(/^\d+(\.\d{1,2})?$/, "Must be valid decimal string").optional()
 });
+var updateProfileSchema = z.object({
+  fullName: z.string().min(2, "Full name must be at least 2 characters").optional(),
+  email: z.string().email("Valid corporate email address required").optional(),
+  phone: z.string().optional().nullable()
+});
+var changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Current password is required"),
+  newPassword: z.string().min(6, "New password must be at least 6 characters long")
+});
 
 // src/utils/jwt.ts
 import jwt from "jsonwebtoken";
@@ -563,7 +572,7 @@ function verifyToken(token) {
 }
 
 // src/controllers/auth.controller.ts
-import { eq } from "drizzle-orm";
+import { eq, and, ne } from "drizzle-orm";
 async function login(req, res) {
   try {
     const parseResult = loginSchema.safeParse(req.body);
@@ -720,6 +729,140 @@ async function getProfile(req, res) {
     });
   }
 }
+async function updateProfile(req, res) {
+  try {
+    const authUser = req.user;
+    if (!authUser) {
+      res.status(401).json({
+        error: "Unauthorized",
+        message: "Authentication token missing or invalid."
+      });
+      return;
+    }
+    const parseResult = updateProfileSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      res.status(400).json({
+        error: "ValidationError",
+        details: parseResult.error.flatten().fieldErrors
+      });
+      return;
+    }
+    const { fullName, email, phone } = parseResult.data;
+    const currentUser = await db.query.users.findFirst({
+      where: eq(users.id, authUser.userId)
+    });
+    if (!currentUser) {
+      res.status(404).json({
+        error: "NotFound",
+        message: "User profile not found."
+      });
+      return;
+    }
+    if (email && email.toLowerCase().trim() !== currentUser.email.toLowerCase()) {
+      const emailConflict = await db.query.users.findFirst({
+        where: and(
+          eq(users.email, email.toLowerCase().trim()),
+          ne(users.id, authUser.userId)
+        )
+      });
+      if (emailConflict) {
+        res.status(409).json({
+          error: "Conflict",
+          message: "This corporate email address is already in use by another account."
+        });
+        return;
+      }
+    }
+    const updateValues = {
+      updatedAt: /* @__PURE__ */ new Date()
+    };
+    if (fullName !== void 0) updateValues.fullName = fullName.trim();
+    if (email !== void 0) updateValues.email = email.toLowerCase().trim();
+    if (phone !== void 0) updateValues.phone = phone ? phone.trim() : null;
+    const [updatedUser] = await db.update(users).set(updateValues).where(eq(users.id, authUser.userId)).returning({
+      id: users.id,
+      email: users.email,
+      fullName: users.fullName,
+      phone: users.phone,
+      role: users.role,
+      hourlyLaborRate: users.hourlyLaborRate,
+      biometricEnrolled: users.biometricEnrolled,
+      isActive: users.isActive,
+      createdAt: users.createdAt
+    });
+    const token = generateToken({
+      userId: updatedUser.id,
+      email: updatedUser.email,
+      fullName: updatedUser.fullName,
+      role: updatedUser.role
+    });
+    res.status(200).json({
+      message: "Profile updated successfully",
+      token,
+      user: updatedUser
+    });
+  } catch (error) {
+    console.error("[AUTH ERROR] Update profile failed:", error);
+    res.status(500).json({
+      error: "InternalServerError",
+      message: "Failed to update profile."
+    });
+  }
+}
+async function changePassword(req, res) {
+  try {
+    const authUser = req.user;
+    if (!authUser) {
+      res.status(401).json({
+        error: "Unauthorized",
+        message: "Authentication token missing or invalid."
+      });
+      return;
+    }
+    const parseResult = changePasswordSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      res.status(400).json({
+        error: "ValidationError",
+        details: parseResult.error.flatten().fieldErrors
+      });
+      return;
+    }
+    const { currentPassword, newPassword } = parseResult.data;
+    const user = await db.query.users.findFirst({
+      where: eq(users.id, authUser.userId)
+    });
+    if (!user) {
+      res.status(404).json({
+        error: "NotFound",
+        message: "User account not found."
+      });
+      return;
+    }
+    const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isMatch) {
+      res.status(400).json({
+        error: "InvalidCredentials",
+        message: "Current password does not match."
+      });
+      return;
+    }
+    const saltRounds = 10;
+    const passwordHash = await bcrypt.hash(newPassword, saltRounds);
+    await db.update(users).set({
+      passwordHash,
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq(users.id, authUser.userId));
+    res.status(200).json({
+      message: "Password changed successfully"
+    });
+  } catch (error) {
+    console.error("[AUTH ERROR] Change password failed:", error);
+    res.status(500).json({
+      error: "InternalServerError",
+      message: "Failed to change password."
+    });
+  }
+}
 
 // src/controllers/biometric.controller.ts
 import { eq as eq2 } from "drizzle-orm";
@@ -816,6 +959,8 @@ var authRouter = Router2();
 authRouter.post("/login", login);
 authRouter.post("/register", register);
 authRouter.get("/me", authenticateToken, getProfile);
+authRouter.patch("/profile", authenticateToken, updateProfile);
+authRouter.post("/change-password", authenticateToken, changePassword);
 authRouter.post("/biometric-verify", authenticateToken, biometricVerify);
 authRouter.get("/supervisor-check", authenticateToken, requireRole(["SUPERVISOR"]), (_req, res) => {
   res.status(200).json({ authorized: true, role: "SUPERVISOR" });
@@ -948,7 +1093,146 @@ var updateFleetStatusSchema = z3.object({
 });
 
 // src/controllers/fleet.controller.ts
-import { eq as eq4 } from "drizzle-orm";
+import { eq as eq4, inArray, and as and2, isNull } from "drizzle-orm";
+function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371e3;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(R * c);
+}
+async function getLiveFleetTracking(_req, res) {
+  try {
+    const activeOrders = await db.query.workOrders.findMany({
+      where: inArray(workOrders.status, [
+        "DISPATCHED",
+        "EN_ROUTE",
+        "ON_SITE_ACTIVE",
+        "UNACKNOWLEDGED_BREAK",
+        "AWAITING_PARTS_APPROVAL"
+      ]),
+      with: {
+        facility: true,
+        fleetAsset: true,
+        leadTechnician: {
+          columns: { id: true, fullName: true, email: true, phone: true, role: true }
+        },
+        assignments: {
+          with: {
+            technician: {
+              columns: { id: true, fullName: true, email: true, phone: true, role: true }
+            }
+          }
+        }
+      },
+      orderBy: (wo, { desc: desc7 }) => [desc7(wo.createdAt)]
+    });
+    const activeOrderIds = activeOrders.map((wo) => wo.id);
+    let activeAttendances = [];
+    if (activeOrderIds.length > 0) {
+      activeAttendances = await db.query.siteAttendance.findMany({
+        where: and2(
+          inArray(siteAttendance.workOrderId, activeOrderIds),
+          isNull(siteAttendance.clockOutTimestamp)
+        )
+      });
+    }
+    const DEPOT_LAT = 6.9271;
+    const DEPOT_LON = 79.8612;
+    const trackedSites = activeOrders.map((wo, index) => {
+      const facility = wo.facility;
+      const attendance = activeAttendances.find((a) => a.workOrderId === wo.id);
+      let currentLat = facility.latitude;
+      let currentLon = facility.longitude;
+      let isInside = false;
+      if (wo.status === "ON_SITE_ACTIVE" || wo.status === "UNACKNOWLEDGED_BREAK" || wo.status === "AWAITING_PARTS_APPROVAL") {
+        const offset = (index % 5 - 2) * 1e-4;
+        currentLat = facility.latitude + offset;
+        currentLon = facility.longitude + offset;
+        isInside = true;
+      } else if (wo.status === "EN_ROUTE") {
+        const transitRatio = 0.65;
+        currentLat = DEPOT_LAT + (facility.latitude - DEPOT_LAT) * transitRatio;
+        currentLon = DEPOT_LON + (facility.longitude - DEPOT_LON) * transitRatio;
+        isInside = false;
+      } else {
+        const transitRatio = 0.15;
+        currentLat = DEPOT_LAT + (facility.latitude - DEPOT_LAT) * transitRatio;
+        currentLon = DEPOT_LON + (facility.longitude - DEPOT_LON) * transitRatio;
+        isInside = false;
+      }
+      const distance = calculateDistanceMeters(currentLat, currentLon, facility.latitude, facility.longitude);
+      const formattedDistance = distance < 1e3 ? `${distance}m` : `${(distance / 1e3).toFixed(1)}km`;
+      const crew = wo.assignments.map((a) => a.technician).filter((t) => t !== null);
+      return {
+        workOrderId: wo.id,
+        workOrderNumber: wo.workOrderNumber,
+        title: wo.title,
+        description: wo.description,
+        status: wo.status,
+        priority: wo.priority,
+        scheduledStartTime: wo.scheduledStartTime ? new Date(wo.scheduledStartTime).toISOString() : null,
+        scheduledEndTime: wo.scheduledEndTime ? new Date(wo.scheduledEndTime).toISOString() : null,
+        facility: {
+          id: facility.id,
+          companyName: facility.companyName,
+          facilityName: facility.facilityName,
+          address: facility.address,
+          latitude: facility.latitude,
+          longitude: facility.longitude,
+          geofenceRadius: facility.geofenceRadius,
+          contactPersonName: facility.contactPersonName,
+          contactPhone: facility.contactPhone,
+          slaResponseHours: facility.slaResponseHours
+        },
+        team: {
+          leadTechnician: wo.leadTechnician ? {
+            id: wo.leadTechnician.id,
+            fullName: wo.leadTechnician.fullName,
+            email: wo.leadTechnician.email,
+            phone: wo.leadTechnician.phone,
+            role: wo.leadTechnician.role
+          } : null,
+          crew: crew.map((c) => ({
+            id: c.id,
+            fullName: c.fullName,
+            email: c.email,
+            phone: c.phone,
+            role: c.role
+          })),
+          totalHeadcount: (wo.leadTechnician ? 1 : 0) + crew.length
+        },
+        vehicle: wo.fleetAsset ? {
+          id: wo.fleetAsset.id,
+          assetCode: wo.fleetAsset.assetCode,
+          name: wo.fleetAsset.name,
+          assetType: wo.fleetAsset.assetType,
+          licensePlate: wo.fleetAsset.licensePlate,
+          status: wo.fleetAsset.status
+        } : null,
+        telemetry: {
+          latitude: currentLat,
+          longitude: currentLon,
+          isInsideGeofence: isInside,
+          distanceToFacilityMeters: distance,
+          formattedDistance,
+          lastPingTimestamp: attendance?.updatedAt ? new Date(attendance.updatedAt).toISOString() : (/* @__PURE__ */ new Date()).toISOString()
+        }
+      };
+    });
+    res.status(200).json({
+      count: trackedSites.length,
+      trackedSites
+    });
+  } catch (error) {
+    console.error("[FLEET ERROR] Failed to fetch live tracking:", error);
+    res.status(500).json({
+      error: "InternalServerError",
+      message: "Failed to retrieve live fleet tracking telemetry."
+    });
+  }
+}
 async function getFleetAssets(_req, res) {
   try {
     const list = await db.query.fleetAssets.findMany({
@@ -1068,6 +1352,8 @@ async function updateFleetAssetStatus(req, res) {
 var fleetRouter = Router4();
 fleetRouter.use(authenticateToken);
 fleetRouter.get("/", getFleetAssets);
+fleetRouter.get("/tracking", getLiveFleetTracking);
+fleetRouter.get("/live-tracking", getLiveFleetTracking);
 fleetRouter.get("/:id", getFleetAssetById);
 fleetRouter.post("/", requireRole(["SUPERVISOR"]), createFleetAsset);
 fleetRouter.patch("/:id/status", requireRole(["SUPERVISOR", "LEAD_TECHNICIAN"]), updateFleetAssetStatus);
@@ -1102,6 +1388,12 @@ var updateWorkOrderStatusSchema = z4.object({
   actualStartTime: z4.string().datetime().optional().nullable(),
   actualEndTime: z4.string().datetime().optional().nullable(),
   notes: z4.string().optional()
+});
+var recordTelemetrySchema = z4.object({
+  latitude: z4.number().min(-90).max(90, "Valid latitude required"),
+  longitude: z4.number().min(-180).max(180, "Valid longitude required"),
+  accuracyMeters: z4.number().min(0).default(5),
+  batteryLevel: z4.number().int().min(0).max(100).optional()
 });
 
 // src/services/calendarPayload.service.ts
@@ -1139,8 +1431,25 @@ Assigned Fleet: ${workOrder.fleetAsset ? `${workOrder.fleetAsset.assetCode} - ${
   };
 }
 
+// src/utils/haversine.ts
+var EARTH_RADIUS_METERS = 6371e3;
+function calculateDistanceMeters2(lat1, lon1, lat2, lon2) {
+  const toRadians = (degrees) => degrees * Math.PI / 180;
+  const dLat = toRadians(lat2 - lat1);
+  const dLon = toRadians(lon2 - lon1);
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return Math.round(EARTH_RADIUS_METERS * c * 100) / 100;
+}
+function isInsideGeofence(deviceLat, deviceLon, facilityLat, facilityLon, geofenceRadiusMeters, accuracyMeters = 0) {
+  const distanceMeters = calculateDistanceMeters2(deviceLat, deviceLon, facilityLat, facilityLon);
+  const effectiveRadius = geofenceRadiusMeters + Math.min(accuracyMeters, 15);
+  const isInside = distanceMeters <= effectiveRadius;
+  return { isInside, distanceMeters };
+}
+
 // src/controllers/workOrder.controller.ts
-import { eq as eq5, desc } from "drizzle-orm";
+import { eq as eq5, desc, inArray as inArray2, and as and3, isNull as isNull2 } from "drizzle-orm";
 async function createWorkOrder(req, res) {
   try {
     const authUser = req.user;
@@ -1180,6 +1489,39 @@ async function createWorkOrder(req, res) {
       });
       return;
     }
+    const candidateTechIds = Array.from(
+      /* @__PURE__ */ new Set([data.leadTechnicianId, ...data.assignedTechnicianIds || []])
+    );
+    const activeWorkOrders = await db.query.workOrders.findMany({
+      where: inArray2(workOrders.status, [
+        "DISPATCHED",
+        "EN_ROUTE",
+        "ON_SITE_ACTIVE",
+        "UNACKNOWLEDGED_BREAK",
+        "AWAITING_PARTS_APPROVAL"
+      ]),
+      with: {
+        assignments: true
+      }
+    });
+    for (const activeWo of activeWorkOrders) {
+      const activeTechIds = /* @__PURE__ */ new Set([
+        activeWo.leadTechnicianId,
+        ...activeWo.assignments.map((a) => a.technicianId)
+      ]);
+      const busyTechId = candidateTechIds.find((id) => activeTechIds.has(id));
+      if (busyTechId) {
+        const busyUser = await db.query.users.findFirst({
+          where: eq5(users.id, busyTechId)
+        });
+        const techName = busyUser ? busyUser.fullName : "Technician";
+        res.status(409).json({
+          error: "TechnicianUnavailable",
+          message: `${techName} is already assigned to active dispatch '${activeWo.workOrderNumber}' and cannot be scheduled concurrently.`
+        });
+        return;
+      }
+    }
     let assignedAsset = null;
     if (data.assignedFleetAssetId) {
       assignedAsset = await db.query.fleetAssets.findFirst({
@@ -1196,6 +1538,13 @@ async function createWorkOrder(req, res) {
         res.status(409).json({
           error: "AssetUnavailable",
           message: `Fleet asset '${assignedAsset.assetCode}' is currently under maintenance and cannot be deployed.`
+        });
+        return;
+      }
+      if (assignedAsset.status === "DEPLOYED") {
+        res.status(409).json({
+          error: "AssetUnavailable",
+          message: `Fleet asset '${assignedAsset.assetCode}' is currently deployed on another active dispatch.`
         });
         return;
       }
@@ -1238,6 +1587,8 @@ async function createWorkOrder(req, res) {
       message: "Work order created and dispatched successfully.",
       workOrder: {
         ...newWorkOrder,
+        facility,
+        fleetAsset: assignedAsset,
         facilityName: facility.facilityName,
         assignedFleetAsset: assignedAsset ? assignedAsset.assetCode : null
       }
@@ -1264,7 +1615,7 @@ async function getWorkOrders(req, res) {
         facility: true,
         fleetAsset: true,
         leadTechnician: {
-          columns: { id: true, fullName: true, email: true, phone: true }
+          columns: { id: true, fullName: true, email: true, phone: true, role: true, hourlyLaborRate: true }
         },
         supervisor: {
           columns: { id: true, fullName: true, email: true }
@@ -1272,7 +1623,7 @@ async function getWorkOrders(req, res) {
         assignments: {
           with: {
             technician: {
-              columns: { id: true, fullName: true, email: true, phone: true }
+              columns: { id: true, fullName: true, email: true, phone: true, role: true, hourlyLaborRate: true }
             }
           }
         }
@@ -1284,6 +1635,11 @@ async function getWorkOrders(req, res) {
         const isAssigned = wo.assignments.some((a) => a.technicianId === authUser.userId);
         return isLead || isAssigned;
       });
+    }
+    if (authUser.role === "PAYMENT_CLERK") {
+      allOrders = allOrders.filter(
+        (wo) => wo.status === "COMPLETED" || wo.status === "BILLED"
+      );
     }
     if (status && typeof status === "string") {
       allOrders = allOrders.filter((wo) => wo.status === status);
@@ -1312,7 +1668,7 @@ async function getWorkOrderDetail(req, res) {
         facility: true,
         fleetAsset: true,
         leadTechnician: {
-          columns: { id: true, fullName: true, email: true, phone: true }
+          columns: { id: true, fullName: true, email: true, phone: true, role: true, hourlyLaborRate: true }
         },
         supervisor: {
           columns: { id: true, fullName: true, email: true }
@@ -1320,7 +1676,7 @@ async function getWorkOrderDetail(req, res) {
         assignments: {
           with: {
             technician: {
-              columns: { id: true, fullName: true, email: true, phone: true }
+              columns: { id: true, fullName: true, email: true, phone: true, role: true, hourlyLaborRate: true }
             }
           }
         }
@@ -1357,6 +1713,262 @@ async function getWorkOrderDetail(req, res) {
     res.status(500).json({
       error: "InternalServerError",
       message: "Failed to retrieve work order detail."
+    });
+  }
+}
+async function getTeamTelemetry(req, res) {
+  try {
+    const authUser = req.user;
+    if (!authUser) {
+      res.status(401).json({
+        error: "Unauthorized",
+        message: "Authentication required."
+      });
+      return;
+    }
+    const id = req.params.id;
+    const workOrder = await db.query.workOrders.findFirst({
+      where: eq5(workOrders.id, id),
+      with: {
+        facility: true,
+        fleetAsset: true,
+        leadTechnician: {
+          columns: { id: true, fullName: true, email: true, phone: true, role: true }
+        },
+        assignments: {
+          with: {
+            technician: {
+              columns: { id: true, fullName: true, email: true, phone: true, role: true }
+            }
+          }
+        }
+      }
+    });
+    if (!workOrder) {
+      res.status(404).json({
+        error: "NotFound",
+        message: "Work order dispatch not found."
+      });
+      return;
+    }
+    const isSupervisor = authUser.role === "SUPERVISOR";
+    const isLeadOfOrder = workOrder.leadTechnicianId === authUser.userId;
+    const isAssignedLead = authUser.role === "LEAD_TECHNICIAN" && (isLeadOfOrder || workOrder.assignments.some((a) => a.technicianId === authUser.userId));
+    if (!isSupervisor && !isAssignedLead) {
+      res.status(403).json({
+        error: "Forbidden",
+        message: "Only designated lead technicians and operations supervisors can view live crew telemetry."
+      });
+      return;
+    }
+    const attendances = await db.query.siteAttendance.findMany({
+      where: eq5(siteAttendance.workOrderId, id),
+      with: {
+        auditLogs: {
+          orderBy: (logs, { desc: desc7 }) => [desc7(logs.recordedTimestamp)]
+        }
+      },
+      orderBy: [desc(siteAttendance.createdAt)]
+    });
+    const directAuditLogs = await db.query.geofenceAuditLogs.findMany({
+      where: eq5(geofenceAuditLogs.workOrderId, id),
+      orderBy: [desc(geofenceAuditLogs.recordedTimestamp)]
+    });
+    const facility = workOrder.facility;
+    const assignedCrew = workOrder.assignments.map((a) => a.technician).filter((t) => t !== null && t.id !== workOrder.leadTechnicianId);
+    const allMembers = [
+      ...workOrder.leadTechnician ? [workOrder.leadTechnician] : [],
+      ...assignedCrew
+    ];
+    const DEPOT_LAT = 6.9271;
+    const DEPOT_LON = 79.8612;
+    const team = allMembers.map((member, idx) => {
+      const isLead = member.id === workOrder.leadTechnicianId;
+      const memberAttendances = attendances.filter((a) => a.technicianId === member.id);
+      const activeSession = memberAttendances.find((a) => a.clockOutTimestamp === null);
+      const latestSession = memberAttendances[0];
+      const isClockedIn = !!activeSession;
+      const sessionStatus = activeSession ? activeSession.sessionStatus : latestSession ? "CLOCKED_OUT" : workOrder.status === "EN_ROUTE" ? "EN_ROUTE" : "DISPATCHED";
+      let lat = facility.latitude;
+      let lon = facility.longitude;
+      const memberDirectAudit = directAuditLogs.find((l) => l.technicianId === member.id);
+      const latestAudit = memberDirectAudit ?? activeSession?.auditLogs?.[0] ?? latestSession?.auditLogs?.[0];
+      if (latestAudit) {
+        lat = latestAudit.deviceLatitude;
+        lon = latestAudit.deviceLongitude;
+      } else if (workOrder.status === "ON_SITE_ACTIVE" || workOrder.status === "UNACKNOWLEDGED_BREAK" || workOrder.status === "AWAITING_PARTS_APPROVAL") {
+        const offsetLat = (idx % 4 - 1.5) * 18e-5;
+        const offsetLon = ((idx + 1) % 4 - 1.5) * 18e-5;
+        lat = facility.latitude + offsetLat;
+        lon = facility.longitude + offsetLon;
+      } else if (workOrder.status === "EN_ROUTE") {
+        const transitRatio = 0.65;
+        const offset = (idx % 3 - 1) * 2e-4;
+        lat = DEPOT_LAT + (facility.latitude - DEPOT_LAT) * transitRatio + offset;
+        lon = DEPOT_LON + (facility.longitude - DEPOT_LON) * transitRatio + offset;
+      } else {
+        const transitRatio = 0.15;
+        const offset = (idx % 3 - 1) * 2e-4;
+        lat = DEPOT_LAT + (facility.latitude - DEPOT_LAT) * transitRatio + offset;
+        lon = DEPOT_LON + (facility.longitude - DEPOT_LON) * transitRatio + offset;
+      }
+      const dist = calculateDistanceMeters2(lat, lon, facility.latitude, facility.longitude);
+      const isInside = dist <= facility.geofenceRadius;
+      const formattedDistance = dist < 1e3 ? `${Math.round(dist)}m` : `${(dist / 1e3).toFixed(1)}km`;
+      let batteryLevel = null;
+      if (latestAudit?.notes) {
+        try {
+          const parsed = JSON.parse(latestAudit.notes);
+          if (typeof parsed.batteryLevel === "number") {
+            batteryLevel = parsed.batteryLevel;
+          }
+        } catch {
+        }
+      }
+      return {
+        id: member.id,
+        fullName: member.fullName,
+        email: member.email,
+        phone: member.phone,
+        role: member.role,
+        isLead,
+        isClockedIn,
+        sessionStatus,
+        clockInTimestamp: activeSession?.clockInTimestamp ? new Date(activeSession.clockInTimestamp).toISOString() : null,
+        latitude: lat,
+        longitude: lon,
+        isInsideGeofence: isInside,
+        distanceToFacilityMeters: dist,
+        formattedDistance,
+        batteryLevel: batteryLevel ?? (isClockedIn ? 88 : null)
+      };
+    });
+    res.status(200).json({
+      workOrderId: workOrder.id,
+      workOrderNumber: workOrder.workOrderNumber,
+      title: workOrder.title,
+      status: workOrder.status,
+      priority: workOrder.priority,
+      facility: {
+        id: facility.id,
+        companyName: facility.companyName,
+        facilityName: facility.facilityName,
+        address: facility.address,
+        latitude: facility.latitude,
+        longitude: facility.longitude,
+        geofenceRadius: facility.geofenceRadius,
+        contactPersonName: facility.contactPersonName,
+        contactPhone: facility.contactPhone
+      },
+      team,
+      totalCrewCount: team.length,
+      clockedInCount: team.filter((t) => t.isClockedIn).length,
+      insideGeofenceCount: team.filter((t) => t.isInsideGeofence).length
+    });
+  } catch (error) {
+    console.error("[WORK ORDER ERROR] Team telemetry fetch failed:", error);
+    res.status(500).json({
+      error: "InternalServerError",
+      message: "Failed to retrieve team telemetry."
+    });
+  }
+}
+async function recordTelemetry(req, res) {
+  try {
+    const authUser = req.user;
+    if (!authUser) {
+      res.status(401).json({
+        error: "Unauthorized",
+        message: "Authentication required."
+      });
+      return;
+    }
+    const parseResult = recordTelemetrySchema.safeParse(req.body);
+    if (!parseResult.success) {
+      res.status(400).json({
+        error: "ValidationError",
+        details: parseResult.error.flatten().fieldErrors
+      });
+      return;
+    }
+    const id = req.params.id;
+    const { latitude, longitude, accuracyMeters, batteryLevel } = parseResult.data;
+    const workOrder = await db.query.workOrders.findFirst({
+      where: eq5(workOrders.id, id),
+      with: {
+        facility: true,
+        assignments: true
+      }
+    });
+    if (!workOrder) {
+      res.status(404).json({
+        error: "NotFound",
+        message: "Work order dispatch not found."
+      });
+      return;
+    }
+    const isSupervisor = authUser.role === "SUPERVISOR";
+    const isLeadOfOrder = workOrder.leadTechnicianId === authUser.userId;
+    const isAssigned = workOrder.assignments.some((a) => a.technicianId === authUser.userId);
+    if (!isSupervisor && !isLeadOfOrder && !isAssigned) {
+      res.status(403).json({
+        error: "Forbidden",
+        message: "Only assigned technicians, lead technicians, or supervisors can submit telemetry for this work order."
+      });
+      return;
+    }
+    const activeSession = await db.query.siteAttendance.findFirst({
+      where: and3(
+        eq5(siteAttendance.workOrderId, id),
+        eq5(siteAttendance.technicianId, authUser.userId),
+        isNull2(siteAttendance.clockOutTimestamp)
+      ),
+      orderBy: [desc(siteAttendance.createdAt)]
+    });
+    const dist = calculateDistanceMeters2(
+      latitude,
+      longitude,
+      workOrder.facility.latitude,
+      workOrder.facility.longitude
+    );
+    const isInside = dist <= workOrder.facility.geofenceRadius;
+    const [audit] = await db.insert(geofenceAuditLogs).values({
+      workOrderId: id,
+      technicianId: authUser.userId,
+      siteAttendanceId: activeSession?.id ?? null,
+      eventType: isInside ? "GEOFENCE_ENTER" : "GEOFENCE_EXIT_BREACH",
+      recordedTimestamp: /* @__PURE__ */ new Date(),
+      deviceLatitude: latitude,
+      deviceLongitude: longitude,
+      accuracyMeters: accuracyMeters ?? 5,
+      isTamperVerified: true,
+      notes: JSON.stringify({
+        source: "periodic_telemetry",
+        batteryLevel: batteryLevel ?? null,
+        distanceMeters: dist,
+        isInsideGeofence: isInside
+      })
+    }).returning();
+    res.status(200).json({
+      status: "success",
+      message: "Technician telemetry recorded successfully.",
+      telemetry: {
+        id: audit.id,
+        technicianId: authUser.userId,
+        workOrderId: id,
+        latitude,
+        longitude,
+        accuracyMeters: audit.accuracyMeters,
+        batteryLevel: batteryLevel ?? null,
+        distanceMeters: dist,
+        isInsideGeofence: isInside,
+        recordedTimestamp: audit.recordedTimestamp
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: "InternalServerError",
+      message: error.message || "Failed to record technician telemetry."
     });
   }
 }
@@ -1436,6 +2048,8 @@ var workOrdersRouter = Router5();
 workOrdersRouter.use(authenticateToken);
 workOrdersRouter.get("/", getWorkOrders);
 workOrdersRouter.get("/:id", getWorkOrderDetail);
+workOrdersRouter.get("/:id/team-telemetry", getTeamTelemetry);
+workOrdersRouter.post("/:id/telemetry", recordTelemetry);
 workOrdersRouter.post("/", requireRole(["SUPERVISOR"]), createWorkOrder);
 workOrdersRouter.patch("/:id/status", updateWorkOrderStatus);
 
@@ -1481,25 +2095,8 @@ var resumeShiftSchema = z5.object({
   })
 });
 
-// src/utils/haversine.ts
-var EARTH_RADIUS_METERS = 6371e3;
-function calculateDistanceMeters(lat1, lon1, lat2, lon2) {
-  const toRadians = (degrees) => degrees * Math.PI / 180;
-  const dLat = toRadians(lat2 - lat1);
-  const dLon = toRadians(lon2 - lon1);
-  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return Math.round(EARTH_RADIUS_METERS * c * 100) / 100;
-}
-function isInsideGeofence(deviceLat, deviceLon, facilityLat, facilityLon, geofenceRadiusMeters, accuracyMeters = 0) {
-  const distanceMeters = calculateDistanceMeters(deviceLat, deviceLon, facilityLat, facilityLon);
-  const effectiveRadius = geofenceRadiusMeters + Math.min(accuracyMeters, 15);
-  const isInside = distanceMeters <= effectiveRadius;
-  return { isInside, distanceMeters };
-}
-
 // src/controllers/attendance.controller.ts
-import { eq as eq7, and, desc as desc2, isNull } from "drizzle-orm";
+import { eq as eq7, and as and4, desc as desc2, isNull as isNull3 } from "drizzle-orm";
 async function clockIn(req, res) {
   try {
     const authUser = req.user;
@@ -1555,10 +2152,10 @@ async function clockIn(req, res) {
       return;
     }
     const activeSession = await db.query.siteAttendance.findFirst({
-      where: and(
+      where: and4(
         eq7(siteAttendance.workOrderId, workOrderId),
         eq7(siteAttendance.technicianId, authUser.userId),
-        eq7(siteAttendance.sessionStatus, "ACTIVE_ON_SITE")
+        isNull3(siteAttendance.clockOutTimestamp)
       )
     });
     if (activeSession) {
@@ -1631,14 +2228,23 @@ async function clockOut(req, res) {
       return;
     }
     const { workOrderId, latitude, longitude, accuracyMeters } = parseResult.data;
-    const activeSession = await db.query.siteAttendance.findFirst({
-      where: and(
+    let activeSession = await db.query.siteAttendance.findFirst({
+      where: and4(
         eq7(siteAttendance.workOrderId, workOrderId),
         eq7(siteAttendance.technicianId, authUser.userId),
-        isNull(siteAttendance.clockOutTimestamp)
+        isNull3(siteAttendance.clockOutTimestamp)
       ),
       orderBy: [desc2(siteAttendance.createdAt)]
     });
+    if (!activeSession) {
+      activeSession = await db.query.siteAttendance.findFirst({
+        where: and4(
+          eq7(siteAttendance.technicianId, authUser.userId),
+          isNull3(siteAttendance.clockOutTimestamp)
+        ),
+        orderBy: [desc2(siteAttendance.createdAt)]
+      });
+    }
     if (!activeSession) {
       res.status(404).json({
         error: "NotFound",
@@ -1715,9 +2321,40 @@ async function getAttendanceTimeline(req, res) {
     });
   }
 }
+async function getCurrentActiveAttendance(req, res) {
+  try {
+    const authUser = req.user;
+    if (!authUser) {
+      res.status(401).json({ error: "Unauthorized", message: "Authentication required." });
+      return;
+    }
+    const activeSession = await db.query.siteAttendance.findFirst({
+      where: and4(
+        eq7(siteAttendance.technicianId, authUser.userId),
+        isNull3(siteAttendance.clockOutTimestamp)
+      ),
+      with: {
+        workOrder: {
+          with: { facility: true }
+        }
+      },
+      orderBy: [desc2(siteAttendance.createdAt)]
+    });
+    res.status(200).json({
+      active: !!activeSession,
+      session: activeSession || null
+    });
+  } catch (error) {
+    console.error("[ATTENDANCE ERROR] Get current active attendance failed:", error);
+    res.status(500).json({
+      error: "InternalServerError",
+      message: "Failed to retrieve active attendance status."
+    });
+  }
+}
 
 // src/controllers/geofenceBreach.controller.ts
-import { eq as eq8, and as and2, desc as desc3, isNull as isNull2 } from "drizzle-orm";
+import { eq as eq8, and as and5, desc as desc3, isNull as isNull4 } from "drizzle-orm";
 async function handleBoundaryEvent(req, res) {
   try {
     const authUser = req.user;
@@ -1735,10 +2372,10 @@ async function handleBoundaryEvent(req, res) {
     }
     const { workOrderId, eventType, latitude, longitude, accuracyMeters, notes } = parseResult.data;
     const activeSession = await db.query.siteAttendance.findFirst({
-      where: and2(
+      where: and5(
         eq8(siteAttendance.workOrderId, workOrderId),
         eq8(siteAttendance.technicianId, authUser.userId),
-        isNull2(siteAttendance.clockOutTimestamp)
+        isNull4(siteAttendance.clockOutTimestamp)
       ),
       orderBy: [desc3(siteAttendance.createdAt)]
     });
@@ -1841,7 +2478,7 @@ async function resumeShift(req, res) {
       return;
     }
     const session = await db.query.siteAttendance.findFirst({
-      where: and2(
+      where: and5(
         eq8(siteAttendance.workOrderId, workOrderId),
         eq8(siteAttendance.technicianId, authUser.userId),
         eq8(siteAttendance.sessionStatus, "ON_BREAK_VIOLATION")
@@ -1856,7 +2493,7 @@ async function resumeShift(req, res) {
       return;
     }
     const lastBreach = await db.query.geofenceAuditLogs.findFirst({
-      where: and2(
+      where: and5(
         eq8(geofenceAuditLogs.siteAttendanceId, session.id),
         eq8(geofenceAuditLogs.eventType, "GEOFENCE_EXIT_BREACH")
       ),
@@ -1910,6 +2547,7 @@ attendanceRouter.post("/clock-in", clockIn);
 attendanceRouter.post("/clock-out", clockOut);
 attendanceRouter.post("/boundary-event", handleBoundaryEvent);
 attendanceRouter.post("/resume-shift", resumeShift);
+attendanceRouter.get("/current", getCurrentActiveAttendance);
 attendanceRouter.get("/work-order/:id", getAttendanceTimeline);
 
 // src/routes/dossier.route.ts
@@ -1970,6 +2608,9 @@ async function createOrUpdateDossier(req, res) {
     if (!authUser) {
       res.status(401).json({ error: "Unauthorized", message: "Authentication required." });
       return;
+    }
+    if (!req.body.workOrderId && req.params.id) {
+      req.body.workOrderId = req.params.id;
     }
     const parseResult = createOrUpdateDossierSchema.safeParse(req.body);
     if (!parseResult.success) {
@@ -2236,6 +2877,8 @@ var dossierRouter = Router7();
 dossierRouter.use(authenticateToken);
 dossierRouter.post("/", createOrUpdateDossier);
 dossierRouter.get("/work-order/:id", getDossierByWorkOrder);
+dossierRouter.get("/:id", getDossierByWorkOrder);
+dossierRouter.patch("/:id", createOrUpdateDossier);
 dossierRouter.post("/:id/checklist", submitChecklistItems);
 dossierRouter.post("/:id/photos", attachProofPhoto);
 
@@ -2435,6 +3078,65 @@ async function getExpensesByWorkOrder(req, res) {
     });
   }
 }
+async function getAllExpenses(req, res) {
+  try {
+    const authUser = req.user;
+    if (!authUser) {
+      res.status(401).json({ error: "Unauthorized", message: "Authentication required." });
+      return;
+    }
+    const statusParam = req.query.status;
+    const whereClause = statusParam && ["PENDING_SUPERVISOR_APPROVAL", "APPROVED", "FLAGGED_REJECTED"].includes(statusParam) ? eq10(expenseClaims.approvalStatus, statusParam) : void 0;
+    const claims = await db.query.expenseClaims.findMany({
+      where: whereClause,
+      with: {
+        leadTechnician: {
+          columns: { id: true, fullName: true, email: true }
+        },
+        reviewedBySupervisor: {
+          columns: { id: true, fullName: true, email: true }
+        },
+        items: true
+      },
+      orderBy: [desc5(expenseClaims.createdAt)]
+    });
+    let totalClaimed = 0;
+    let totalApproved = 0;
+    let pendingCount = 0;
+    let approvedCount = 0;
+    let rejectedCount = 0;
+    for (const claim of claims) {
+      const amount = parseFloat(claim.totalAmount);
+      totalClaimed += amount;
+      if (claim.approvalStatus === "APPROVED") {
+        totalApproved += amount;
+        approvedCount++;
+      } else if (claim.approvalStatus === "PENDING_SUPERVISOR_APPROVAL") {
+        pendingCount++;
+      } else if (claim.approvalStatus === "FLAGGED_REJECTED") {
+        rejectedCount++;
+      }
+    }
+    res.status(200).json({
+      count: claims.length,
+      expenses: claims,
+      claims,
+      financialSummary: {
+        totalClaimedAmount: +totalClaimed.toFixed(2),
+        totalApprovedAmount: +totalApproved.toFixed(2),
+        pendingClaimsCount: pendingCount,
+        approvedClaimsCount: approvedCount,
+        rejectedClaimsCount: rejectedCount
+      }
+    });
+  } catch (error) {
+    console.error("[EXPENSE ERROR] Fetch all claims failed:", error);
+    res.status(500).json({
+      error: "InternalServerError",
+      message: "Failed to retrieve expense claims."
+    });
+  }
+}
 
 // src/controllers/expenseApproval.controller.ts
 import { eq as eq11 } from "drizzle-orm";
@@ -2534,6 +3236,7 @@ async function verifyExpenseNotLocked(req, res, next) {
 var expenseRouter = Router8();
 expenseRouter.use(authenticateToken);
 expenseRouter.post("/", createExpenseClaim);
+expenseRouter.get("/", getAllExpenses);
 expenseRouter.get("/work-order/:id", getExpensesByWorkOrder);
 expenseRouter.patch(
   "/:id/review",
@@ -2546,41 +3249,90 @@ expenseRouter.patch(
 import { Router as Router9 } from "express";
 
 // src/services/billingCalculator.service.ts
-import { eq as eq13, and as and3 } from "drizzle-orm";
-async function compileWorkOrderBillingMetrics(workOrderId) {
+import { eq as eq13, and as and6 } from "drizzle-orm";
+async function compileWorkOrderBillingMetrics(workOrderId, partsMarkupOverride) {
   const workOrder = await db.query.workOrders.findFirst({
     where: eq13(workOrders.id, workOrderId),
     with: {
       facility: true,
-      fleetAsset: true
+      fleetAsset: true,
+      leadTechnician: true,
+      assignments: {
+        with: {
+          technician: true
+        }
+      }
     }
   });
   if (!workOrder) {
     throw new Error(`Work order '${workOrderId}' not found.`);
   }
   const attendanceSessions = await db.query.siteAttendance.findMany({
-    where: eq13(siteAttendance.workOrderId, workOrderId)
+    where: eq13(siteAttendance.workOrderId, workOrderId),
+    with: {
+      technician: true
+    }
   });
-  let totalBillableSeconds = attendanceSessions.reduce(
-    (acc, session) => acc + (session.totalBillableSeconds || 0),
-    0
-  );
-  let totalBillableLaborHours = 0;
-  if (totalBillableSeconds > 0) {
-    totalBillableLaborHours = +(totalBillableSeconds / 3600).toFixed(2);
-  } else {
-    totalBillableLaborHours = 2.5;
+  const techMap = /* @__PURE__ */ new Map();
+  for (const session of attendanceSessions) {
+    const techId = session.technicianId;
+    const tech = session.technician;
+    const rate = parseFloat(tech?.hourlyLaborRate || "60.00");
+    const existing = techMap.get(techId) || {
+      name: tech?.fullName || "Technician",
+      role: tech?.role || "TECHNICIAN",
+      hourlyRate: rate,
+      seconds: 0
+    };
+    existing.seconds += session.totalBillableSeconds || 0;
+    techMap.set(techId, existing);
   }
-  const hourlyRate = parseFloat(workOrder.facility.contractHourlyRate) || 5e3;
-  const subtotalLabor = +(totalBillableLaborHours * hourlyRate).toFixed(2);
+  const laborBreakdown = [];
+  let totalBillableLaborHours = 0;
+  let subtotalLabor = 0;
+  if (techMap.size > 0 && Array.from(techMap.values()).some((t) => t.seconds > 0)) {
+    for (const [techId, data] of techMap.entries()) {
+      const hours = +(data.seconds / 3600).toFixed(2);
+      const sub = +(hours * data.hourlyRate).toFixed(2);
+      totalBillableLaborHours += hours;
+      subtotalLabor += sub;
+      laborBreakdown.push({
+        technicianId: techId,
+        technicianName: data.name,
+        role: data.role,
+        hourlyRate: data.hourlyRate,
+        billableHours: hours,
+        subtotal: sub
+      });
+    }
+    totalBillableLaborHours = +totalBillableLaborHours.toFixed(2);
+    subtotalLabor = +subtotalLabor.toFixed(2);
+  } else {
+    const leadTech = workOrder.leadTechnician;
+    const leadRate = parseFloat(leadTech?.hourlyLaborRate || "85.00");
+    const defaultHours = 2.5;
+    const leadSub = +(defaultHours * leadRate).toFixed(2);
+    laborBreakdown.push({
+      technicianId: workOrder.leadTechnicianId,
+      technicianName: leadTech?.fullName || "Lead Technician",
+      role: leadTech?.role || "LEAD_TECHNICIAN",
+      hourlyRate: leadRate,
+      billableHours: defaultHours,
+      subtotal: leadSub
+    });
+    totalBillableLaborHours = defaultHours;
+    subtotalLabor = leadSub;
+  }
+  const hourlyLaborRateApplied = totalBillableLaborHours > 0 ? +(subtotalLabor / totalBillableLaborHours).toFixed(2) : 85;
   const approvedClaims = await db.query.expenseClaims.findMany({
-    where: and3(
+    where: and6(
       eq13(expenseClaims.workOrderId, workOrderId),
       eq13(expenseClaims.approvalStatus, "APPROVED")
     )
   });
   const subtotalApprovedParts = +approvedClaims.reduce((acc, claim) => acc + parseFloat(claim.totalAmount), 0).toFixed(2);
-  const partsMarkupPercent = parseFloat(workOrder.facility.partsMarkupPercent) || 15;
+  const facilityMarkup = parseFloat(workOrder.facility.partsMarkupPercent) || 15;
+  const partsMarkupPercent = typeof partsMarkupOverride === "number" && partsMarkupOverride >= 0 ? partsMarkupOverride : facilityMarkup;
   const markupFactor = 1 + partsMarkupPercent / 100;
   const subtotalPartsWithMarkup = +(subtotalApprovedParts * markupFactor).toFixed(2);
   const fleetEquipmentFee = workOrder.assignedFleetAssetId ? 3500 : 0;
@@ -2597,8 +3349,9 @@ async function compileWorkOrderBillingMetrics(workOrderId) {
     workOrderId,
     clientFacilityId: workOrder.clientFacilityId,
     totalBillableLaborHours,
-    hourlyLaborRateApplied: hourlyRate,
+    hourlyLaborRateApplied,
     subtotalLabor,
+    laborBreakdown,
     subtotalApprovedParts,
     partsMarkupPercentApplied: partsMarkupPercent,
     subtotalPartsWithMarkup,
@@ -2637,7 +3390,22 @@ async function generateEstimate(req, res) {
       return;
     }
     const workOrderId = req.params.workOrderId;
-    const calculation = await compileWorkOrderBillingMetrics(workOrderId);
+    const targetOrder = await db.query.workOrders.findFirst({
+      where: eq14(workOrders.id, workOrderId)
+    });
+    if (!targetOrder) {
+      res.status(404).json({ error: "NotFound", message: "Work order dispatch not found." });
+      return;
+    }
+    if (authUser.role === "PAYMENT_CLERK" && targetOrder.status !== "COMPLETED" && targetOrder.status !== "BILLED") {
+      res.status(400).json({
+        error: "WorkOrderInProgress",
+        message: "Invoicing is restricted for in-progress work orders. The dispatch must be COMPLETED before an invoice can be compiled or issued."
+      });
+      return;
+    }
+    const partsMarkupOverride = typeof req.body?.partsMarkupPercent === "number" ? req.body.partsMarkupPercent : void 0;
+    const calculation = await compileWorkOrderBillingMetrics(workOrderId, partsMarkupOverride);
     const existingInvoice = await db.query.billingInvoices.findFirst({
       where: eq14(billingInvoices.workOrderId, workOrderId)
     });
@@ -2658,7 +3426,8 @@ async function generateEstimate(req, res) {
       }).where(eq14(billingInvoices.id, existingInvoice.id)).returning();
       res.status(200).json({
         message: "Billing estimate re-compiled and updated successfully.",
-        invoice: updated
+        invoice: updated,
+        calculation
       });
       return;
     }
@@ -2683,13 +3452,59 @@ async function generateEstimate(req, res) {
     }).returning();
     res.status(201).json({
       message: "Official billing estimate compiled successfully.",
-      invoice: newInvoice
+      invoice: newInvoice,
+      calculation
     });
   } catch (error) {
     console.error("[BILLING ERROR] Generate estimate failed:", error);
     res.status(500).json({
       error: "InternalServerError",
       message: error.message || "Failed to compile billing estimate."
+    });
+  }
+}
+async function previewEstimate(req, res) {
+  try {
+    const authUser = req.user;
+    if (!authUser) {
+      res.status(401).json({ error: "Unauthorized", message: "Authentication required." });
+      return;
+    }
+    const workOrderId = req.params.workOrderId;
+    const targetOrder = await db.query.workOrders.findFirst({
+      where: eq14(workOrders.id, workOrderId)
+    });
+    if (!targetOrder) {
+      res.status(404).json({ error: "NotFound", message: "Work order dispatch not found." });
+      return;
+    }
+    if (authUser.role === "PAYMENT_CLERK" && targetOrder.status !== "COMPLETED" && targetOrder.status !== "BILLED") {
+      res.status(400).json({
+        error: "WorkOrderInProgress",
+        message: "Cannot preview estimate for in-progress work order. The dispatch must be COMPLETED."
+      });
+      return;
+    }
+    const markupParam = req.query.partsMarkupPercent ? parseFloat(req.query.partsMarkupPercent) : void 0;
+    const calculation = await compileWorkOrderBillingMetrics(workOrderId, markupParam);
+    const existingInvoice = await db.query.billingInvoices.findFirst({
+      where: eq14(billingInvoices.workOrderId, workOrderId),
+      with: {
+        facility: true,
+        clerk: {
+          columns: { id: true, fullName: true, email: true, role: true }
+        }
+      }
+    });
+    res.status(200).json({
+      calculation,
+      existingInvoice: existingInvoice || null
+    });
+  } catch (error) {
+    console.error("[BILLING ERROR] Preview estimate failed:", error);
+    res.status(500).json({
+      error: "InternalServerError",
+      message: error.message || "Failed to preview billing estimate."
     });
   }
 }
@@ -2893,6 +3708,11 @@ async function getSwiftChartsAnalytics(req, res) {
 // src/routes/billing.route.ts
 var billingRouter = Router9();
 billingRouter.use(authenticateToken);
+billingRouter.get(
+  "/estimate/:workOrderId",
+  requireRole(["PAYMENT_CLERK", "SUPERVISOR"]),
+  previewEstimate
+);
 billingRouter.post(
   "/estimate/:workOrderId",
   requireRole(["PAYMENT_CLERK", "SUPERVISOR"]),
@@ -2906,8 +3726,82 @@ billingRouter.patch(
 );
 billingRouter.get("/analytics/:workOrderId", getSwiftChartsAnalytics);
 
-// src/routes/docs.route.ts
+// src/routes/users.route.ts
 import { Router as Router10 } from "express";
+
+// src/controllers/users.controller.ts
+import { eq as eq16, inArray as inArray3, and as and8 } from "drizzle-orm";
+async function getTechnicians(_req, res) {
+  try {
+    const techUsers = await db.query.users.findMany({
+      where: and8(
+        inArray3(users.role, ["LEAD_TECHNICIAN", "TECHNICIAN"]),
+        eq16(users.isActive, true)
+      ),
+      orderBy: (u, { asc }) => [asc(u.fullName)],
+      columns: {
+        id: true,
+        email: true,
+        fullName: true,
+        phone: true,
+        role: true,
+        hourlyLaborRate: true,
+        biometricEnrolled: true
+      }
+    });
+    const activeOrders = await db.query.workOrders.findMany({
+      where: inArray3(workOrders.status, [
+        "DISPATCHED",
+        "EN_ROUTE",
+        "ON_SITE_ACTIVE",
+        "UNACKNOWLEDGED_BREAK",
+        "AWAITING_PARTS_APPROVAL"
+      ]),
+      with: {
+        facility: true,
+        assignments: true
+      }
+    });
+    const result = techUsers.map((tech) => {
+      const activeJob = activeOrders.find(
+        (wo) => wo.leadTechnicianId === tech.id || wo.assignments.some((a) => a.technicianId === tech.id)
+      );
+      return {
+        id: tech.id,
+        fullName: tech.fullName,
+        email: tech.email,
+        phone: tech.phone,
+        role: tech.role,
+        hourlyLaborRate: tech.hourlyLaborRate,
+        isAvailable: !activeJob,
+        status: activeJob ? activeJob.status === "EN_ROUTE" ? "En Route" : "Active On-Site" : "Available",
+        activeWorkOrderId: activeJob?.id || null,
+        activeWorkOrderNumber: activeJob?.workOrderNumber || null,
+        activeWorkOrderTitle: activeJob?.title || null,
+        facilityName: activeJob?.facility?.facilityName || null
+      };
+    });
+    res.status(200).json({
+      count: result.length,
+      technicians: result
+    });
+  } catch (error) {
+    console.error("[USERS ERROR] Failed to fetch technicians:", error);
+    res.status(500).json({
+      error: "InternalServerError",
+      message: "Failed to retrieve technicians."
+    });
+  }
+}
+
+// src/routes/users.route.ts
+var usersRouter = Router10();
+usersRouter.use(authenticateToken);
+usersRouter.get("/", getTechnicians);
+usersRouter.get("/technicians", getTechnicians);
+
+// src/routes/docs.route.ts
+import { Router as Router11 } from "express";
 import swaggerUi from "swagger-ui-express";
 
 // src/docs/swagger.json
@@ -3293,7 +4187,7 @@ var swagger_default = {
 };
 
 // src/routes/docs.route.ts
-var docsRouter = Router10();
+var docsRouter = Router11();
 docsRouter.get("/json", (_req, res) => {
   res.setHeader("Content-Type", "application/json");
   res.json(swagger_default);
@@ -3304,10 +4198,10 @@ docsRouter.use("/", swaggerUi.serve, swaggerUi.setup(swagger_default, {
 }));
 
 // src/routes/notifications.route.ts
-import { Router as Router11 } from "express";
+import { Router as Router12 } from "express";
 
 // src/controllers/notifications.controller.ts
-import { eq as eq16, desc as desc6, and as and5, isNull as isNull3 } from "drizzle-orm";
+import { eq as eq17, desc as desc6, and as and9, isNull as isNull5 } from "drizzle-orm";
 async function getUserNotifications(req, res) {
   try {
     const authUser = req.user;
@@ -3316,7 +4210,7 @@ async function getUserNotifications(req, res) {
       return;
     }
     const notifications = await db.query.systemNotifications.findMany({
-      where: eq16(systemNotifications.recipientUserId, authUser.userId),
+      where: eq17(systemNotifications.recipientUserId, authUser.userId),
       orderBy: [desc6(systemNotifications.createdAt)],
       limit: 50
     });
@@ -3344,16 +4238,16 @@ async function markNotificationAsRead(req, res) {
     }
     const id = req.params.id;
     const notification = await db.query.systemNotifications.findFirst({
-      where: and5(
-        eq16(systemNotifications.id, id),
-        eq16(systemNotifications.recipientUserId, authUser.userId)
+      where: and9(
+        eq17(systemNotifications.id, id),
+        eq17(systemNotifications.recipientUserId, authUser.userId)
       )
     });
     if (!notification) {
       res.status(404).json({ error: "NotFound", message: "Notification not found." });
       return;
     }
-    const [updated] = await db.update(systemNotifications).set({ isRead: true }).where(eq16(systemNotifications.id, id)).returning();
+    const [updated] = await db.update(systemNotifications).set({ isRead: true }).where(eq17(systemNotifications.id, id)).returning();
     res.status(200).json({
       message: "Notification marked as read.",
       notification: updated
@@ -3370,16 +4264,16 @@ async function getLiveWidgetTelemetry(req, res) {
   try {
     const technicianId = req.params.technicianId;
     const technician = await db.query.users.findFirst({
-      where: eq16(users.id, technicianId)
+      where: eq17(users.id, technicianId)
     });
     if (!technician) {
       res.status(404).json({ error: "NotFound", message: "Technician not found." });
       return;
     }
     const activeSession = await db.query.siteAttendance.findFirst({
-      where: and5(
-        eq16(siteAttendance.technicianId, technicianId),
-        isNull3(siteAttendance.clockOutTimestamp)
+      where: and9(
+        eq17(siteAttendance.technicianId, technicianId),
+        isNull5(siteAttendance.clockOutTimestamp)
       ),
       with: {
         workOrder: {
@@ -3421,7 +4315,7 @@ async function getLiveWidgetTelemetry(req, res) {
       return;
     }
     const dispatchedJob = await db.query.workOrders.findFirst({
-      where: eq16(workOrders.leadTechnicianId, technicianId),
+      where: eq17(workOrders.leadTechnicianId, technicianId),
       with: { facility: true },
       orderBy: [desc6(workOrders.createdAt)]
     });
@@ -3474,10 +4368,10 @@ async function getLiveWidgetTelemetry(req, res) {
 }
 
 // src/routes/notifications.route.ts
-var notificationsRouter = Router11();
+var notificationsRouter = Router12();
 notificationsRouter.get("/", authenticateToken, getUserNotifications);
 notificationsRouter.patch("/:id/read", authenticateToken, markNotificationAsRead);
-var telemetryRouter = Router11();
+var telemetryRouter = Router12();
 telemetryRouter.get("/widget/:technicianId", getLiveWidgetTelemetry);
 
 // src/config/cors.ts
@@ -3528,6 +4422,7 @@ app.use("/api/attendance", attendanceRouter);
 app.use("/api/dossiers", dossierRouter);
 app.use("/api/expenses", expenseRouter);
 app.use("/api/billing", billingRouter);
+app.use("/api/users", usersRouter);
 app.use("/api/docs", docsRouter);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/telemetry", telemetryRouter);
