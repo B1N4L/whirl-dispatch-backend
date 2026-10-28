@@ -38,7 +38,20 @@ export async function createWorkOrder(req: Request, res: Response): Promise<void
 
     const data = parseResult.data;
 
-    // 1. Verify Facility exists
+    // 1. Verify Authenticated Supervisor exists in database
+    const supervisor = await db.query.users.findFirst({
+      where: eq(users.id, authUser.userId),
+    });
+
+    if (!supervisor) {
+      res.status(401).json({
+        error: 'Unauthorized',
+        message: 'Supervisor session token is stale or user no longer exists. Please log out and log in again.',
+      });
+      return;
+    }
+
+    // 2. Verify Facility exists
     const facility = await db.query.clientFacilities.findFirst({
       where: eq(clientFacilities.id, data.clientFacilityId),
     });
@@ -51,7 +64,7 @@ export async function createWorkOrder(req: Request, res: Response): Promise<void
       return;
     }
 
-    // 2. Verify Lead Tech exists and has valid role
+    // 3. Verify Lead Tech exists and has valid role
     const leadTech = await db.query.users.findFirst({
       where: eq(users.id, data.leadTechnicianId),
     });
@@ -64,7 +77,7 @@ export async function createWorkOrder(req: Request, res: Response): Promise<void
       return;
     }
 
-    // 3. Verify that none of the assigned technicians already have an active work order
+    // 4. Verify that none of the assigned technicians already have an active work order
     const candidateTechIds = Array.from(
       new Set([data.leadTechnicianId, ...(data.assignedTechnicianIds || [])])
     );
@@ -85,7 +98,7 @@ export async function createWorkOrder(req: Request, res: Response): Promise<void
     for (const activeWo of activeWorkOrders) {
       const activeTechIds = new Set([
         activeWo.leadTechnicianId,
-        ...activeWo.assignments.map((a) => a.technicianId),
+        ...(activeWo.assignments ?? []).map((a) => a.technicianId),
       ]);
       const busyTechId = candidateTechIds.find((id) => activeTechIds.has(id));
       if (busyTechId) {
@@ -101,7 +114,22 @@ export async function createWorkOrder(req: Request, res: Response): Promise<void
       }
     }
 
-    // 4. Prevent Fleet Asset double-booking / check status
+    // 5. Verify any additional assigned crew members exist in database
+    if (data.assignedTechnicianIds && data.assignedTechnicianIds.length > 0) {
+      const assignedCrew = await db.query.users.findMany({
+        where: inArray(users.id, data.assignedTechnicianIds),
+      });
+
+      if (assignedCrew.length !== data.assignedTechnicianIds.length) {
+        res.status(400).json({
+          error: 'InvalidAssignment',
+          message: 'One or more assigned crew technicians could not be found.',
+        });
+        return;
+      }
+    }
+
+    // 6. Prevent Fleet Asset double-booking / check status
     let assignedAsset = null;
     if (data.assignedFleetAssetId) {
       assignedAsset = await db.query.fleetAssets.findFirst({
@@ -133,9 +161,22 @@ export async function createWorkOrder(req: Request, res: Response): Promise<void
       }
     }
 
-    // 5. Generate sequential work order number
-    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const workOrderNumber = `WO-2026-${randomSuffix}`;
+    // 7. Generate sequential unique work order number
+    let workOrderNumber = '';
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      const candidateNumber = `WO-2026-${randomSuffix}`;
+      const existing = await db.query.workOrders.findFirst({
+        where: eq(workOrders.workOrderNumber, candidateNumber),
+      });
+      if (!existing) {
+        workOrderNumber = candidateNumber;
+        break;
+      }
+    }
+    if (!workOrderNumber) {
+      workOrderNumber = `WO-2026-${Date.now().toString().slice(-4)}`;
+    }
 
     const [newWorkOrder] = await db
       .insert(workOrders)
@@ -154,7 +195,7 @@ export async function createWorkOrder(req: Request, res: Response): Promise<void
       })
       .returning();
 
-    // 6. Update vehicle status to DEPLOYED
+    // 8. Update vehicle status to DEPLOYED
     if (data.assignedFleetAssetId) {
       await db
         .update(fleetAssets)
@@ -162,7 +203,7 @@ export async function createWorkOrder(req: Request, res: Response): Promise<void
         .where(eq(fleetAssets.id, data.assignedFleetAssetId));
     }
 
-    // 7. Assign team members
+    // 9. Assign team members
     const teamIds = Array.from(new Set([data.leadTechnicianId, ...data.assignedTechnicianIds]));
     if (teamIds.length > 0) {
       const assignmentInserts = teamIds.map((techId) => ({
@@ -171,7 +212,7 @@ export async function createWorkOrder(req: Request, res: Response): Promise<void
       }));
       await db.insert(workOrderAssignments).values(assignmentInserts);
 
-      // 8. Dispatch push notifications to assigned team
+      // 10. Dispatch push notifications to assigned team
       const notificationInserts = teamIds.map((techId) => ({
         recipientUserId: techId,
         workOrderId: newWorkOrder.id,

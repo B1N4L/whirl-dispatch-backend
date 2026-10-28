@@ -1469,6 +1469,16 @@ async function createWorkOrder(req, res) {
       return;
     }
     const data = parseResult.data;
+    const supervisor = await db.query.users.findFirst({
+      where: eq5(users.id, authUser.userId)
+    });
+    if (!supervisor) {
+      res.status(401).json({
+        error: "Unauthorized",
+        message: "Supervisor session token is stale or user no longer exists. Please log out and log in again."
+      });
+      return;
+    }
     const facility = await db.query.clientFacilities.findFirst({
       where: eq5(clientFacilities.id, data.clientFacilityId)
     });
@@ -1507,7 +1517,7 @@ async function createWorkOrder(req, res) {
     for (const activeWo of activeWorkOrders) {
       const activeTechIds = /* @__PURE__ */ new Set([
         activeWo.leadTechnicianId,
-        ...activeWo.assignments.map((a) => a.technicianId)
+        ...(activeWo.assignments ?? []).map((a) => a.technicianId)
       ]);
       const busyTechId = candidateTechIds.find((id) => activeTechIds.has(id));
       if (busyTechId) {
@@ -1518,6 +1528,18 @@ async function createWorkOrder(req, res) {
         res.status(409).json({
           error: "TechnicianUnavailable",
           message: `${techName} is already assigned to active dispatch '${activeWo.workOrderNumber}' and cannot be scheduled concurrently.`
+        });
+        return;
+      }
+    }
+    if (data.assignedTechnicianIds && data.assignedTechnicianIds.length > 0) {
+      const assignedCrew = await db.query.users.findMany({
+        where: inArray2(users.id, data.assignedTechnicianIds)
+      });
+      if (assignedCrew.length !== data.assignedTechnicianIds.length) {
+        res.status(400).json({
+          error: "InvalidAssignment",
+          message: "One or more assigned crew technicians could not be found."
         });
         return;
       }
@@ -1549,8 +1571,21 @@ async function createWorkOrder(req, res) {
         return;
       }
     }
-    const randomSuffix = Math.floor(1e3 + Math.random() * 9e3);
-    const workOrderNumber = `WO-2026-${randomSuffix}`;
+    let workOrderNumber = "";
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const randomSuffix = Math.floor(1e3 + Math.random() * 9e3);
+      const candidateNumber = `WO-2026-${randomSuffix}`;
+      const existing = await db.query.workOrders.findFirst({
+        where: eq5(workOrders.workOrderNumber, candidateNumber)
+      });
+      if (!existing) {
+        workOrderNumber = candidateNumber;
+        break;
+      }
+    }
+    if (!workOrderNumber) {
+      workOrderNumber = `WO-2026-${Date.now().toString().slice(-4)}`;
+    }
     const [newWorkOrder] = await db.insert(workOrders).values({
       workOrderNumber,
       clientFacilityId: data.clientFacilityId,
