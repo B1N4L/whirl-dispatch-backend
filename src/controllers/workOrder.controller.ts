@@ -563,7 +563,7 @@ export async function recordTelemetry(req: Request, res: Response): Promise<void
         workOrderId: id,
         technicianId: authUser.userId,
         siteAttendanceId: activeSession?.id ?? null,
-        eventType: 'GEOFENCE_ENTER',
+        eventType: isInside ? 'GEOFENCE_ENTER' : 'GEOFENCE_EXIT_BREACH',
         recordedTimestamp: new Date(),
         deviceLatitude: latitude,
         deviceLongitude: longitude,
