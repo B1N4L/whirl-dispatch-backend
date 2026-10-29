@@ -202,17 +202,18 @@ describe('Field Expense Ledger & Receipt Audit Pipeline APIs', () => {
       expect(res.body.claim.reviewedAt).not.toBeNull();
     });
 
-    it('PATCH /api/expenses/:id/review should lock approved claims from further mutation', async () => {
+    it('PATCH /api/expenses/:id/review should allow supervisor to re-review and modify an already approved claim', async () => {
       const res = await request(app)
         .patch(`/api/expenses/${standardClaimId}/review`)
         .set('Authorization', `Bearer ${supervisorToken}`)
         .send({
           approvalStatus: 'FLAGGED_REJECTED',
-          rejectionReason: 'Attempting to change approved claim',
+          rejectionReason: 'Supervisor reversed decision after discovering duplicate vendor invoice.',
         });
 
-      expect(res.status).toBe(409);
-      expect(res.body.error).toBe('ExpenseLocked');
+      expect(res.status).toBe(200);
+      expect(res.body.claim.approvalStatus).toBe('FLAGGED_REJECTED');
+      expect(res.body.claim.rejectionReason).toContain('duplicate vendor invoice');
     });
   });
 

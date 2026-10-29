@@ -74,9 +74,30 @@ export async function reviewExpenseClaim(req: Request, res: Response): Promise<v
           : `Supervisor rejected expense claim. Reason: ${rejectionReason}`,
     });
 
+    const fullClaim = await db.query.expenseClaims.findFirst({
+      where: eq(expenseClaims.id, id),
+      with: {
+        workOrder: {
+          columns: { id: true, workOrderNumber: true, title: true },
+          with: {
+            facility: {
+              columns: { id: true, companyName: true, facilityName: true, address: true },
+            },
+          },
+        },
+        leadTechnician: {
+          columns: { id: true, fullName: true, email: true, phone: true },
+        },
+        reviewedBySupervisor: {
+          columns: { id: true, fullName: true, email: true },
+        },
+        items: true,
+      },
+    });
+
     res.status(200).json({
       message: `Expense claim ${approvalStatus === 'APPROVED' ? 'approved' : 'flagged & rejected'} successfully.`,
-      claim: updatedClaim,
+      claim: fullClaim || updatedClaim,
     });
   } catch (error) {
     console.error('[EXPENSE APPROVAL ERROR] Review failed:', error);

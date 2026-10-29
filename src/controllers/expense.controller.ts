@@ -141,6 +141,14 @@ export async function getExpensesByWorkOrder(req: Request, res: Response): Promi
     const claims = await db.query.expenseClaims.findMany({
       where: eq(expenseClaims.workOrderId, id),
       with: {
+        workOrder: {
+          columns: { id: true, workOrderNumber: true, title: true },
+          with: {
+            facility: {
+              columns: { id: true, companyName: true, facilityName: true, address: true },
+            },
+          },
+        },
         leadTechnician: {
           columns: { id: true, fullName: true, email: true },
         },
@@ -212,6 +220,14 @@ export async function getAllExpenses(req: Request, res: Response): Promise<void>
     const claims = await db.query.expenseClaims.findMany({
       where: whereClause,
       with: {
+        workOrder: {
+          columns: { id: true, workOrderNumber: true, title: true },
+          with: {
+            facility: {
+              columns: { id: true, companyName: true, facilityName: true, address: true },
+            },
+          },
+        },
         leadTechnician: {
           columns: { id: true, fullName: true, email: true },
         },

@@ -7,7 +7,6 @@ import {
 import { reviewExpenseClaim } from '../controllers/expenseApproval.controller';
 import { authenticateToken } from '../middleware/auth.middleware';
 import { requireRole } from '../middleware/rbac.middleware';
-import { verifyExpenseNotLocked } from '../middleware/expenseLock.middleware';
 
 export const expenseRouter = Router();
 
@@ -19,6 +18,5 @@ expenseRouter.get('/work-order/:id', getExpensesByWorkOrder);
 expenseRouter.patch(
   '/:id/review',
   requireRole(['SUPERVISOR']),
-  verifyExpenseNotLocked,
   reviewExpenseClaim
 );

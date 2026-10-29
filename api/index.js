@@ -2648,6 +2648,14 @@ async function getExpensesByWorkOrder(req, res) {
     const claims = await db.query.expenseClaims.findMany({
       where: eq9(expenseClaims.workOrderId, id),
       with: {
+        workOrder: {
+          columns: { id: true, workOrderNumber: true, title: true },
+          with: {
+            facility: {
+              columns: { id: true, companyName: true, facilityName: true, address: true }
+            }
+          }
+        },
         leadTechnician: {
           columns: { id: true, fullName: true, email: true }
         },
@@ -2707,6 +2715,14 @@ async function getAllExpenses(req, res) {
     const claims = await db.query.expenseClaims.findMany({
       where: whereClause,
       with: {
+        workOrder: {
+          columns: { id: true, workOrderNumber: true, title: true },
+          with: {
+            facility: {
+              columns: { id: true, companyName: true, facilityName: true, address: true }
+            }
+          }
+        },
         leadTechnician: {
           columns: { id: true, fullName: true, email: true }
         },
@@ -2804,47 +2820,35 @@ async function reviewExpenseClaim(req, res) {
       title: `Expense Claim ${approvalStatus === "APPROVED" ? "Approved" : "Flagged & Rejected"}`,
       body: approvalStatus === "APPROVED" ? `Supervisor approved expense of ${claim.totalAmount} LKR for vendor '${claim.vendorName}'.` : `Supervisor rejected expense claim. Reason: ${rejectionReason}`
     });
+    const fullClaim = await db.query.expenseClaims.findFirst({
+      where: eq10(expenseClaims.id, id),
+      with: {
+        workOrder: {
+          columns: { id: true, workOrderNumber: true, title: true },
+          with: {
+            facility: {
+              columns: { id: true, companyName: true, facilityName: true, address: true }
+            }
+          }
+        },
+        leadTechnician: {
+          columns: { id: true, fullName: true, email: true, phone: true }
+        },
+        reviewedBySupervisor: {
+          columns: { id: true, fullName: true, email: true }
+        },
+        items: true
+      }
+    });
     res.status(200).json({
       message: `Expense claim ${approvalStatus === "APPROVED" ? "approved" : "flagged & rejected"} successfully.`,
-      claim: updatedClaim
+      claim: fullClaim || updatedClaim
     });
   } catch (error) {
     console.error("[EXPENSE APPROVAL ERROR] Review failed:", error);
     res.status(500).json({
       error: "InternalServerError",
       message: "Failed to review expense claim."
-    });
-  }
-}
-
-// src/middleware/expenseLock.middleware.ts
-import { eq as eq11 } from "drizzle-orm";
-async function verifyExpenseNotLocked(req, res, next) {
-  try {
-    const id = req.params.id;
-    const claim = await db.query.expenseClaims.findFirst({
-      where: eq11(expenseClaims.id, id)
-    });
-    if (!claim) {
-      res.status(404).json({
-        error: "NotFound",
-        message: "Expense claim not found."
-      });
-      return;
-    }
-    if (claim.approvalStatus === "APPROVED") {
-      res.status(409).json({
-        error: "ExpenseLocked",
-        message: "Approved expense claim is permanently locked from modifications or status mutations."
-      });
-      return;
-    }
-    next();
-  } catch (error) {
-    console.error("[EXPENSE LOCK ERROR]", error);
-    res.status(500).json({
-      error: "InternalServerError",
-      message: "Failed to verify expense lock state."
     });
   }
 }
@@ -2858,7 +2862,6 @@ expenseRouter.get("/work-order/:id", getExpensesByWorkOrder);
 expenseRouter.patch(
   "/:id/review",
   requireRole(["SUPERVISOR"]),
-  verifyExpenseNotLocked,
   reviewExpenseClaim
 );
 
@@ -2866,10 +2869,10 @@ expenseRouter.patch(
 import { Router as Router8 } from "express";
 
 // src/services/billingCalculator.service.ts
-import { eq as eq12, and as and6 } from "drizzle-orm";
+import { eq as eq11, and as and6 } from "drizzle-orm";
 async function compileWorkOrderBillingMetrics(workOrderId, partsMarkupOverride) {
   const workOrder = await db.query.workOrders.findFirst({
-    where: eq12(workOrders.id, workOrderId),
+    where: eq11(workOrders.id, workOrderId),
     with: {
       facility: true,
       fleetAsset: true,
@@ -2885,7 +2888,7 @@ async function compileWorkOrderBillingMetrics(workOrderId, partsMarkupOverride) 
     throw new Error(`Work order '${workOrderId}' not found.`);
   }
   const attendanceSessions = await db.query.siteAttendance.findMany({
-    where: eq12(siteAttendance.workOrderId, workOrderId),
+    where: eq11(siteAttendance.workOrderId, workOrderId),
     with: {
       technician: true
     }
@@ -2943,8 +2946,8 @@ async function compileWorkOrderBillingMetrics(workOrderId, partsMarkupOverride) 
   const hourlyLaborRateApplied = totalBillableLaborHours > 0 ? +(subtotalLabor / totalBillableLaborHours).toFixed(2) : 85;
   const approvedClaims = await db.query.expenseClaims.findMany({
     where: and6(
-      eq12(expenseClaims.workOrderId, workOrderId),
-      eq12(expenseClaims.approvalStatus, "APPROVED")
+      eq11(expenseClaims.workOrderId, workOrderId),
+      eq11(expenseClaims.approvalStatus, "APPROVED")
     )
   });
   const subtotalApprovedParts = +approvedClaims.reduce((acc, claim) => acc + parseFloat(claim.totalAmount), 0).toFixed(2);
@@ -2982,7 +2985,7 @@ async function compileWorkOrderBillingMetrics(workOrderId, partsMarkupOverride) 
 }
 
 // src/controllers/billing.controller.ts
-import { eq as eq13 } from "drizzle-orm";
+import { eq as eq12 } from "drizzle-orm";
 import { z as z7 } from "zod";
 var updateInvoiceStatusSchema = z7.object({
   status: z7.enum([
@@ -3008,7 +3011,7 @@ async function generateEstimate(req, res) {
     }
     const workOrderId = req.params.workOrderId;
     const targetOrder = await db.query.workOrders.findFirst({
-      where: eq13(workOrders.id, workOrderId)
+      where: eq12(workOrders.id, workOrderId)
     });
     if (!targetOrder) {
       res.status(404).json({ error: "NotFound", message: "Work order dispatch not found." });
@@ -3024,7 +3027,7 @@ async function generateEstimate(req, res) {
     const partsMarkupOverride = typeof req.body?.partsMarkupPercent === "number" ? req.body.partsMarkupPercent : void 0;
     const calculation = await compileWorkOrderBillingMetrics(workOrderId, partsMarkupOverride);
     const existingInvoice = await db.query.billingInvoices.findFirst({
-      where: eq13(billingInvoices.workOrderId, workOrderId)
+      where: eq12(billingInvoices.workOrderId, workOrderId)
     });
     const now = /* @__PURE__ */ new Date();
     if (existingInvoice) {
@@ -3040,7 +3043,7 @@ async function generateEstimate(req, res) {
         taxAmount: calculation.taxAmount.toFixed(2),
         grandTotal: calculation.grandTotal.toFixed(2),
         updatedAt: now
-      }).where(eq13(billingInvoices.id, existingInvoice.id)).returning();
+      }).where(eq12(billingInvoices.id, existingInvoice.id)).returning();
       res.status(200).json({
         message: "Billing estimate re-compiled and updated successfully.",
         invoice: updated,
@@ -3089,7 +3092,7 @@ async function previewEstimate(req, res) {
     }
     const workOrderId = req.params.workOrderId;
     const targetOrder = await db.query.workOrders.findFirst({
-      where: eq13(workOrders.id, workOrderId)
+      where: eq12(workOrders.id, workOrderId)
     });
     if (!targetOrder) {
       res.status(404).json({ error: "NotFound", message: "Work order dispatch not found." });
@@ -3105,7 +3108,7 @@ async function previewEstimate(req, res) {
     const markupParam = req.query.partsMarkupPercent ? parseFloat(req.query.partsMarkupPercent) : void 0;
     const calculation = await compileWorkOrderBillingMetrics(workOrderId, markupParam);
     const existingInvoice = await db.query.billingInvoices.findFirst({
-      where: eq13(billingInvoices.workOrderId, workOrderId),
+      where: eq12(billingInvoices.workOrderId, workOrderId),
       with: {
         facility: true,
         clerk: {
@@ -3129,7 +3132,7 @@ async function getInvoice(req, res) {
   try {
     const id = req.params.id;
     let invoice = await db.query.billingInvoices.findFirst({
-      where: eq13(billingInvoices.id, id),
+      where: eq12(billingInvoices.id, id),
       with: {
         facility: true,
         clerk: {
@@ -3140,7 +3143,7 @@ async function getInvoice(req, res) {
     });
     if (!invoice) {
       invoice = await db.query.billingInvoices.findFirst({
-        where: eq13(billingInvoices.workOrderId, id),
+        where: eq12(billingInvoices.workOrderId, id),
         with: {
           facility: true,
           clerk: {
@@ -3181,7 +3184,7 @@ async function updateInvoiceStatus(req, res) {
     }
     const { status } = parseResult.data;
     const existingInvoice = await db.query.billingInvoices.findFirst({
-      where: eq13(billingInvoices.id, id)
+      where: eq12(billingInvoices.id, id)
     });
     if (!existingInvoice) {
       res.status(404).json({ error: "NotFound", message: "Invoice not found." });
@@ -3191,12 +3194,12 @@ async function updateInvoiceStatus(req, res) {
     const [updatedInvoice] = await db.update(billingInvoices).set({
       status,
       updatedAt: now
-    }).where(eq13(billingInvoices.id, id)).returning();
+    }).where(eq12(billingInvoices.id, id)).returning();
     if (status === "ISSUED_TO_CLIENT" || status === "PAID") {
       await db.update(workOrders).set({
         status: "BILLED",
         updatedAt: now
-      }).where(eq13(workOrders.id, existingInvoice.workOrderId));
+      }).where(eq12(workOrders.id, existingInvoice.workOrderId));
     }
     res.status(200).json({
       message: `Invoice status transitioned to ${status}.`,
@@ -3212,17 +3215,17 @@ async function updateInvoiceStatus(req, res) {
 }
 
 // src/controllers/analytics.controller.ts
-import { eq as eq14 } from "drizzle-orm";
+import { eq as eq13 } from "drizzle-orm";
 async function getSwiftChartsAnalytics(req, res) {
   try {
     const workOrderId = req.params.workOrderId;
     let invoice = await db.query.billingInvoices.findFirst({
-      where: eq14(billingInvoices.workOrderId, workOrderId),
+      where: eq13(billingInvoices.workOrderId, workOrderId),
       with: { facility: true }
     });
     if (!invoice) {
       invoice = await db.query.billingInvoices.findFirst({
-        where: eq14(billingInvoices.id, workOrderId),
+        where: eq13(billingInvoices.id, workOrderId),
         with: { facility: true }
       });
     }
@@ -3243,7 +3246,7 @@ async function getSwiftChartsAnalytics(req, res) {
     const fleetPct = grandTotal > 0 ? +(fleetFee / grandTotal * 100).toFixed(1) : 0;
     const taxPct = grandTotal > 0 ? +(taxAmount / grandTotal * 100).toFixed(1) : 0;
     const attendanceRecords = await db.query.siteAttendance.findMany({
-      where: eq14(siteAttendance.workOrderId, invoice.workOrderId),
+      where: eq13(siteAttendance.workOrderId, invoice.workOrderId),
       with: {
         technician: {
           columns: { id: true, fullName: true, role: true }
@@ -3347,13 +3350,13 @@ billingRouter.get("/analytics/:workOrderId", getSwiftChartsAnalytics);
 import { Router as Router9 } from "express";
 
 // src/controllers/users.controller.ts
-import { eq as eq15, inArray as inArray3, and as and8 } from "drizzle-orm";
+import { eq as eq14, inArray as inArray3, and as and8 } from "drizzle-orm";
 async function getTechnicians(_req, res) {
   try {
     const techUsers = await db.query.users.findMany({
       where: and8(
         inArray3(users.role, ["LEAD_TECHNICIAN", "TECHNICIAN"]),
-        eq15(users.isActive, true)
+        eq14(users.isActive, true)
       ),
       orderBy: (u, { asc }) => [asc(u.fullName)],
       columns: {
@@ -3784,7 +3787,7 @@ docsRouter.use("/", swaggerUi.serve, swaggerUi.setup(swagger_default, {
 import { Router as Router11 } from "express";
 
 // src/controllers/notifications.controller.ts
-import { eq as eq16, desc as desc5, and as and9, isNull as isNull5 } from "drizzle-orm";
+import { eq as eq15, desc as desc5, and as and9, isNull as isNull5 } from "drizzle-orm";
 async function getUserNotifications(req, res) {
   try {
     const authUser = req.user;
@@ -3793,7 +3796,7 @@ async function getUserNotifications(req, res) {
       return;
     }
     const notifications = await db.query.systemNotifications.findMany({
-      where: eq16(systemNotifications.recipientUserId, authUser.userId),
+      where: eq15(systemNotifications.recipientUserId, authUser.userId),
       orderBy: [desc5(systemNotifications.createdAt)],
       limit: 50
     });
@@ -3822,15 +3825,15 @@ async function markNotificationAsRead(req, res) {
     const id = req.params.id;
     const notification = await db.query.systemNotifications.findFirst({
       where: and9(
-        eq16(systemNotifications.id, id),
-        eq16(systemNotifications.recipientUserId, authUser.userId)
+        eq15(systemNotifications.id, id),
+        eq15(systemNotifications.recipientUserId, authUser.userId)
       )
     });
     if (!notification) {
       res.status(404).json({ error: "NotFound", message: "Notification not found." });
       return;
     }
-    const [updated] = await db.update(systemNotifications).set({ isRead: true }).where(eq16(systemNotifications.id, id)).returning();
+    const [updated] = await db.update(systemNotifications).set({ isRead: true }).where(eq15(systemNotifications.id, id)).returning();
     res.status(200).json({
       message: "Notification marked as read.",
       notification: updated
@@ -3847,7 +3850,7 @@ async function getLiveWidgetTelemetry(req, res) {
   try {
     const technicianId = req.params.technicianId;
     const technician = await db.query.users.findFirst({
-      where: eq16(users.id, technicianId)
+      where: eq15(users.id, technicianId)
     });
     if (!technician) {
       res.status(404).json({ error: "NotFound", message: "Technician not found." });
@@ -3855,7 +3858,7 @@ async function getLiveWidgetTelemetry(req, res) {
     }
     const activeSession = await db.query.siteAttendance.findFirst({
       where: and9(
-        eq16(siteAttendance.technicianId, technicianId),
+        eq15(siteAttendance.technicianId, technicianId),
         isNull5(siteAttendance.clockOutTimestamp)
       ),
       with: {
@@ -3898,7 +3901,7 @@ async function getLiveWidgetTelemetry(req, res) {
       return;
     }
     const dispatchedJob = await db.query.workOrders.findFirst({
-      where: eq16(workOrders.leadTechnicianId, technicianId),
+      where: eq15(workOrders.leadTechnicianId, technicianId),
       with: { facility: true },
       orderBy: [desc5(workOrders.createdAt)]
     });
