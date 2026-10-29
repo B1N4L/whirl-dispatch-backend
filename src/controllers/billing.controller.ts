@@ -1,9 +1,9 @@
 import { Request, Response } from 'express';
 import { db } from '../config/db';
-import { billingInvoices, workOrders } from '../db/schema/index';
+import { billingInvoices, workOrders, expenseClaims } from '../db/schema/index';
 import { compileWorkOrderBillingMetrics } from '../services/billingCalculator.service';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
-import { eq } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { z } from 'zod';
 
 const updateInvoiceStatusSchema = z.object({
@@ -61,6 +61,14 @@ export async function generateEstimate(req: Request, res: Response): Promise<voi
     const existingInvoice = await db.query.billingInvoices.findFirst({
       where: eq(billingInvoices.workOrderId, workOrderId),
     });
+
+    if (existingInvoice && (existingInvoice.status === 'ISSUED_TO_CLIENT' || existingInvoice.status === 'PAID')) {
+      res.status(400).json({
+        error: 'InvoiceAlreadyBilled',
+        message: 'Already billed invoices cannot be modified. Invoicing parameters are locked.',
+      });
+      return;
+    }
 
     const now = new Date();
 
@@ -172,9 +180,24 @@ export async function previewEstimate(req: Request, res: Response): Promise<void
       },
     });
 
+    const approvedClaims = await db.query.expenseClaims.findMany({
+      where: and(
+        eq(expenseClaims.workOrderId, workOrderId),
+        eq(expenseClaims.approvalStatus, 'APPROVED')
+      ),
+      with: {
+        leadTechnician: {
+          columns: { id: true, fullName: true, email: true },
+        },
+        items: true,
+      },
+      orderBy: (c, { desc: claimDesc }) => [claimDesc(c.createdAt)],
+    });
+
     res.status(200).json({
       calculation,
       existingInvoice: existingInvoice || null,
+      approvedExpenses: approvedClaims,
     });
   } catch (error: any) {
     console.error('[BILLING ERROR] Preview estimate failed:', error);

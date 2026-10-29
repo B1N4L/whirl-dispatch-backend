@@ -907,7 +907,7 @@ import { eq as eq3 } from "drizzle-orm";
 async function getFacilities(_req, res) {
   try {
     const list = await db.query.clientFacilities.findMany({
-      orderBy: (facilities, { desc: desc6 }) => [desc6(facilities.createdAt)]
+      orderBy: (facilities, { desc: desc7 }) => [desc7(facilities.createdAt)]
     });
     res.status(200).json({
       count: list.length,
@@ -1040,7 +1040,7 @@ async function getLiveFleetTracking(_req, res) {
           }
         }
       },
-      orderBy: (wo, { desc: desc6 }) => [desc6(wo.createdAt)]
+      orderBy: (wo, { desc: desc7 }) => [desc7(wo.createdAt)]
     });
     const activeOrderIds = activeOrders.map((wo) => wo.id);
     let activeAttendances = [];
@@ -1714,7 +1714,7 @@ async function getTeamTelemetry(req, res) {
       where: eq5(siteAttendance.workOrderId, id),
       with: {
         auditLogs: {
-          orderBy: (logs, { desc: desc6 }) => [desc6(logs.recordedTimestamp)]
+          orderBy: (logs, { desc: desc7 }) => [desc7(logs.recordedTimestamp)]
         }
       },
       orderBy: [desc(siteAttendance.createdAt)]
@@ -2985,7 +2985,7 @@ async function compileWorkOrderBillingMetrics(workOrderId, partsMarkupOverride) 
 }
 
 // src/controllers/billing.controller.ts
-import { eq as eq12 } from "drizzle-orm";
+import { eq as eq12, and as and7 } from "drizzle-orm";
 import { z as z7 } from "zod";
 var updateInvoiceStatusSchema = z7.object({
   status: z7.enum([
@@ -3029,6 +3029,13 @@ async function generateEstimate(req, res) {
     const existingInvoice = await db.query.billingInvoices.findFirst({
       where: eq12(billingInvoices.workOrderId, workOrderId)
     });
+    if (existingInvoice && (existingInvoice.status === "ISSUED_TO_CLIENT" || existingInvoice.status === "PAID")) {
+      res.status(400).json({
+        error: "InvoiceAlreadyBilled",
+        message: "Already billed invoices cannot be modified. Invoicing parameters are locked."
+      });
+      return;
+    }
     const now = /* @__PURE__ */ new Date();
     if (existingInvoice) {
       const [updated] = await db.update(billingInvoices).set({
@@ -3116,9 +3123,23 @@ async function previewEstimate(req, res) {
         }
       }
     });
+    const approvedClaims = await db.query.expenseClaims.findMany({
+      where: and7(
+        eq12(expenseClaims.workOrderId, workOrderId),
+        eq12(expenseClaims.approvalStatus, "APPROVED")
+      ),
+      with: {
+        leadTechnician: {
+          columns: { id: true, fullName: true, email: true }
+        },
+        items: true
+      },
+      orderBy: (c, { desc: claimDesc }) => [claimDesc(c.createdAt)]
+    });
     res.status(200).json({
       calculation,
-      existingInvoice: existingInvoice || null
+      existingInvoice: existingInvoice || null,
+      approvedExpenses: approvedClaims
     });
   } catch (error) {
     console.error("[BILLING ERROR] Preview estimate failed:", error);
@@ -3350,11 +3371,11 @@ billingRouter.get("/analytics/:workOrderId", getSwiftChartsAnalytics);
 import { Router as Router9 } from "express";
 
 // src/controllers/users.controller.ts
-import { eq as eq14, inArray as inArray3, and as and8 } from "drizzle-orm";
+import { eq as eq14, inArray as inArray3, and as and9 } from "drizzle-orm";
 async function getTechnicians(_req, res) {
   try {
     const techUsers = await db.query.users.findMany({
-      where: and8(
+      where: and9(
         inArray3(users.role, ["LEAD_TECHNICIAN", "TECHNICIAN"]),
         eq14(users.isActive, true)
       ),
@@ -3797,7 +3818,7 @@ docsRouter.use("/", swaggerUi.serve, swaggerUi.setup(swagger_default, {
 import { Router as Router11 } from "express";
 
 // src/controllers/notifications.controller.ts
-import { eq as eq15, desc as desc5, and as and9, isNull as isNull5 } from "drizzle-orm";
+import { eq as eq15, desc as desc6, and as and10, isNull as isNull5 } from "drizzle-orm";
 async function getUserNotifications(req, res) {
   try {
     const authUser = req.user;
@@ -3807,7 +3828,7 @@ async function getUserNotifications(req, res) {
     }
     const notifications = await db.query.systemNotifications.findMany({
       where: eq15(systemNotifications.recipientUserId, authUser.userId),
-      orderBy: [desc5(systemNotifications.createdAt)],
+      orderBy: [desc6(systemNotifications.createdAt)],
       limit: 50
     });
     const unreadCount = notifications.filter((n) => !n.isRead).length;
@@ -3834,7 +3855,7 @@ async function markNotificationAsRead(req, res) {
     }
     const id = req.params.id;
     const notification = await db.query.systemNotifications.findFirst({
-      where: and9(
+      where: and10(
         eq15(systemNotifications.id, id),
         eq15(systemNotifications.recipientUserId, authUser.userId)
       )
@@ -3867,7 +3888,7 @@ async function getLiveWidgetTelemetry(req, res) {
       return;
     }
     const activeSession = await db.query.siteAttendance.findFirst({
-      where: and9(
+      where: and10(
         eq15(siteAttendance.technicianId, technicianId),
         isNull5(siteAttendance.clockOutTimestamp)
       ),
@@ -3876,7 +3897,7 @@ async function getLiveWidgetTelemetry(req, res) {
           with: { facility: true }
         }
       },
-      orderBy: [desc5(siteAttendance.createdAt)]
+      orderBy: [desc6(siteAttendance.createdAt)]
     });
     if (activeSession && activeSession.workOrder) {
       const now = /* @__PURE__ */ new Date();
@@ -3913,7 +3934,7 @@ async function getLiveWidgetTelemetry(req, res) {
     const dispatchedJob = await db.query.workOrders.findFirst({
       where: eq15(workOrders.leadTechnicianId, technicianId),
       with: { facility: true },
-      orderBy: [desc5(workOrders.createdAt)]
+      orderBy: [desc6(workOrders.createdAt)]
     });
     if (dispatchedJob && (dispatchedJob.status === "EN_ROUTE" || dispatchedJob.status === "DISPATCHED")) {
       const isEnRoute = dispatchedJob.status === "EN_ROUTE";
