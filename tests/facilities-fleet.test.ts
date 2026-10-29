@@ -171,4 +171,24 @@ describe('Facilities & Fleet Management APIs', () => {
       expect(Array.isArray(res.body.trackedSites)).toBe(true);
     });
   });
+
+  describe('Technicians Roster API', () => {
+    it('GET /api/users/technicians should return technician list with active dispatch context', async () => {
+      const res = await request(app)
+        .get('/api/users/technicians')
+        .set('Authorization', `Bearer ${supervisorToken}`);
+
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.technicians)).toBe(true);
+      expect(res.body.count).toBeGreaterThan(0);
+
+      const tech = res.body.technicians[0];
+      expect(tech).toHaveProperty('id');
+      expect(tech).toHaveProperty('fullName');
+      expect(tech).toHaveProperty('role');
+      expect(tech).toHaveProperty('status');
+      expect(tech).toHaveProperty('isAvailable');
+      expect(tech).toHaveProperty('hourlyLaborRate');
+    });
+  });
 });

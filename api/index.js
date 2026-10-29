@@ -3386,6 +3386,7 @@ async function getTechnicians(_req, res) {
       const activeJob = activeOrders.find(
         (wo) => wo.leadTechnicianId === tech.id || wo.assignments.some((a) => a.technicianId === tech.id)
       );
+      const isLeadOnJob = activeJob ? activeJob.leadTechnicianId === tech.id : null;
       return {
         id: tech.id,
         fullName: tech.fullName,
@@ -3393,12 +3394,21 @@ async function getTechnicians(_req, res) {
         phone: tech.phone,
         role: tech.role,
         hourlyLaborRate: tech.hourlyLaborRate,
+        biometricEnrolled: tech.biometricEnrolled,
         isAvailable: !activeJob,
         status: activeJob ? activeJob.status === "EN_ROUTE" ? "En Route" : "Active On-Site" : "Available",
         activeWorkOrderId: activeJob?.id || null,
         activeWorkOrderNumber: activeJob?.workOrderNumber || null,
         activeWorkOrderTitle: activeJob?.title || null,
-        facilityName: activeJob?.facility?.facilityName || null
+        activeWorkOrderDescription: activeJob?.description || null,
+        activeWorkOrderPriority: activeJob?.priority || null,
+        activeWorkOrderStatus: activeJob?.status || null,
+        activeWorkOrderScheduledStart: activeJob?.scheduledStartTime ? activeJob.scheduledStartTime.toISOString() : null,
+        activeWorkOrderScheduledEnd: activeJob?.scheduledEndTime ? activeJob.scheduledEndTime.toISOString() : null,
+        isLeadOnActiveJob: isLeadOnJob,
+        companyName: activeJob?.facility?.companyName || null,
+        facilityName: activeJob?.facility?.facilityName || null,
+        facilityAddress: activeJob?.facility?.address || null
       };
     });
     res.status(200).json({
