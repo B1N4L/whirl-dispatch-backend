@@ -7,8 +7,6 @@ import {
   workOrders,
   workOrderAssignments,
   siteAttendance,
-  diagnosticDossiers,
-  checklistItems,
   expenseClaims,
   expenseItems,
   billingInvoices,
@@ -25,8 +23,6 @@ async function seed() {
       billing_invoices,
       expense_items,
       expense_claims,
-      checklist_items,
-      diagnostic_dossiers,
       geofence_audit_logs,
       site_attendance,
       system_notifications,
@@ -394,7 +390,7 @@ async function seed() {
   const clerkId = seededUsers['anusha.clerk@whirldispatch.com'];
 
   const sampleWorkOrders = [
-    // Completed work order with full diagnostic dossier, receipts, and invoice
+    // Completed work order with receipts and invoice
     {
       workOrderNumber: 'WO-2026-0001',
       clientFacilityId: seededFacilities['Hemas HQ Mechanical Plant Room'],
@@ -615,70 +611,8 @@ async function seed() {
       });
     }
 
-    // 5. Seed Diagnostic Dossier for Completed WO-2026-0001
+    // 5. Seed Sample Expense Claim & Approved Receipts
     if (wo.workOrderNumber === 'WO-2026-0001' && woId) {
-      const existingDossier = await unpooledDb.query.diagnosticDossiers.findFirst({
-        where: eq(diagnosticDossiers.workOrderId, woId),
-      });
-
-      if (!existingDossier) {
-        console.log('[SEED] Seeding diagnostic dossier and inspection checklist...');
-        const [dossier] = await unpooledDb
-          .insert(diagnosticDossiers)
-          .values({
-            workOrderId: woId,
-            leadTechnicianId: lead1Id,
-            equipmentModel: 'York YK Centrifugal Liquid Chiller 500TR',
-            equipmentSerialNumber: 'YK-500-SR-2019-041',
-            baselineSuctionPressurePsi: '48.50',
-            postServiceSuctionPressurePsi: '62.00',
-            baselineDischargePressurePsi: '285.00',
-            postServiceDischargePressurePsi: '210.00',
-            baselineMotorRunningAmps: '420.00',
-            postServiceMotorRunningAmps: '345.00',
-            baselineCoilTempDifferential: '4.20',
-            postServiceCoilTempDifferential: '10.80',
-            diagnosticNotes:
-              'Found condenser water strainer clogged with heavy bio-fouling and scale. Cleaned strainers, back-flushed shell-and-tube heat exchanger, reset high pressure manual limit.',
-            isCompleted: true,
-            completedAt: new Date('2026-10-04T14:30:00Z'),
-          })
-          .returning({ id: diagnosticDossiers.id });
-
-        // Add Categorized Checklist Items
-        await unpooledDb.insert(checklistItems).values([
-          {
-            diagnosticDossierId: dossier.id,
-            category: 'COMPRESSOR_SYSTEM',
-            itemLabel: 'Check compressor oil level and differential pressure',
-            isChecked: true,
-            notes: 'Oil level at 65% sight glass, nominal pressure confirmed.',
-          },
-          {
-            diagnosticDossierId: dossier.id,
-            category: 'REFRIGERANT_CIRCUIT',
-            itemLabel: 'Inspect moisture indicator sight glass for acid/dry status',
-            isChecked: true,
-            notes: 'Color indicates dry circuit.',
-          },
-          {
-            diagnosticDossierId: dossier.id,
-            category: 'ELECTRICAL_CONTROLS',
-            itemLabel: 'Measure terminal contactor voltage drop and tight coil connections',
-            isChecked: true,
-            notes: 'Contactor points cleaned and torqued.',
-          },
-          {
-            diagnosticDossierId: dossier.id,
-            category: 'CONDENSER_AIR_FLOW',
-            itemLabel: 'Inspect water flow switch differential and condenser pump GPM',
-            isChecked: true,
-            notes: 'Differential restored to 12.5 PSI across bundle.',
-          },
-        ]);
-      }
-
-      // 6. Seed Sample Expense Claim & Approved Receipts
       const existingExpense = await unpooledDb.query.expenseClaims.findFirst({
         where: eq(expenseClaims.workOrderId, woId),
       });

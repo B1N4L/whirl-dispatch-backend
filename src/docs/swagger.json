@@ -94,17 +94,6 @@
           "sessionStatus": { "type": "string", "enum": ["ACTIVE_ON_SITE", "ON_BREAK_VIOLATION", "CLOCKED_OUT"] }
         }
       },
-      "DiagnosticDossier": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "workOrderId": { "type": "string", "format": "uuid" },
-          "equipmentModel": { "type": "string" },
-          "baselineSuctionPressurePsi": { "type": "string" },
-          "postServiceSuctionPressurePsi": { "type": "string" },
-          "isCompleted": { "type": "boolean" }
-        }
-      },
       "ExpenseClaim": {
         "type": "object",
         "properties": {
@@ -292,29 +281,6 @@
         "tags": ["Attendance & Telemetry"],
         "responses": {
           "200": { "description": "Clocked out" }
-        }
-      }
-    },
-    "/dossiers": {
-      "post": {
-        "summary": "Create or update diagnostic sensor dossier",
-        "security": [{ "bearerAuth": [] }],
-        "tags": ["Diagnostic Dossiers"],
-        "responses": {
-          "201": { "description": "Dossier saved" }
-        }
-      }
-    },
-    "/dossiers/work-order/{id}": {
-      "get": {
-        "summary": "Get dossier, checklists, and proof photos",
-        "security": [{ "bearerAuth": [] }],
-        "tags": ["Diagnostic Dossiers"],
-        "parameters": [
-          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
-        ],
-        "responses": {
-          "200": { "description": "Complete diagnostic dossier" }
         }
       }
     },

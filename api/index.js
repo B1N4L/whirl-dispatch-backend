@@ -41,13 +41,8 @@ __export(schema_exports, {
   assetTypeEnum: () => assetTypeEnum,
   billingInvoices: () => billingInvoices,
   billingInvoicesRelations: () => billingInvoicesRelations,
-  checklistCategoryEnum: () => checklistCategoryEnum,
-  checklistItems: () => checklistItems,
-  checklistItemsRelations: () => checklistItemsRelations,
   clientFacilities: () => clientFacilities,
   clientFacilitiesRelations: () => clientFacilitiesRelations,
-  diagnosticDossiers: () => diagnosticDossiers,
-  diagnosticDossiersRelations: () => diagnosticDossiersRelations,
   expenseApprovalStatusEnum: () => expenseApprovalStatusEnum,
   expenseClaims: () => expenseClaims,
   expenseClaimsRelations: () => expenseClaimsRelations,
@@ -60,9 +55,6 @@ __export(schema_exports, {
   geofenceEventTypeEnum: () => geofenceEventTypeEnum,
   invoiceStatusEnum: () => invoiceStatusEnum,
   notificationTypeEnum: () => notificationTypeEnum,
-  photoTypeEnum: () => photoTypeEnum,
-  proofPhotos: () => proofPhotos,
-  proofPhotosRelations: () => proofPhotosRelations,
   sessionStatusEnum: () => sessionStatusEnum,
   siteAttendance: () => siteAttendance,
   siteAttendanceRelations: () => siteAttendanceRelations,
@@ -302,121 +294,43 @@ var geofenceAuditLogsRelations = relations5(geofenceAuditLogs, ({ one }) => ({
   })
 }));
 
-// src/db/schema/dossiers.ts
-import { pgTable as pgTable6, uuid as uuid6, varchar as varchar5, text as text5, numeric as numeric3, boolean as boolean3, timestamp as timestamp6, doublePrecision as doublePrecision3, pgEnum as pgEnum5 } from "drizzle-orm/pg-core";
-import { relations as relations6 } from "drizzle-orm";
-var checklistCategoryEnum = pgEnum5("checklist_category", [
-  "COMPRESSOR_SYSTEM",
-  "REFRIGERANT_CIRCUIT",
-  "ELECTRICAL_CONTROLS",
-  "CONDENSER_AIR_FLOW"
-]);
-var photoTypeEnum = pgEnum5("photo_type", [
-  "BASELINE_BEFORE",
-  "POST_SERVICE_AFTER",
-  "DEFECT_EVIDENCE",
-  "REPLACED_PART"
-]);
-var diagnosticDossiers = pgTable6("diagnostic_dossiers", {
-  id: uuid6("id").defaultRandom().primaryKey(),
-  workOrderId: uuid6("work_order_id").references(() => workOrders.id, { onDelete: "cascade" }).notNull().unique(),
-  leadTechnicianId: uuid6("lead_technician_id").references(() => users.id).notNull(),
-  equipmentModel: varchar5("equipment_model", { length: 255 }).notNull(),
-  equipmentSerialNumber: varchar5("equipment_serial_number", { length: 100 }),
-  baselineSuctionPressurePsi: numeric3("baseline_suction_pressure_psi", { precision: 8, scale: 2 }),
-  postServiceSuctionPressurePsi: numeric3("post_service_suction_pressure_psi", { precision: 8, scale: 2 }),
-  baselineDischargePressurePsi: numeric3("baseline_discharge_pressure_psi", { precision: 8, scale: 2 }),
-  postServiceDischargePressurePsi: numeric3("post_service_discharge_pressure_psi", { precision: 8, scale: 2 }),
-  baselineMotorRunningAmps: numeric3("baseline_motor_running_amps", { precision: 8, scale: 2 }),
-  postServiceMotorRunningAmps: numeric3("post_service_motor_running_amps", { precision: 8, scale: 2 }),
-  baselineCoilTempDifferential: numeric3("baseline_coil_temp_differential", { precision: 8, scale: 2 }),
-  postServiceCoilTempDifferential: numeric3("post_service_coil_temp_differential", { precision: 8, scale: 2 }),
-  diagnosticNotes: text5("diagnostic_notes"),
-  isCompleted: boolean3("is_completed").default(false).notNull(),
-  completedAt: timestamp6("completed_at", { withTimezone: true }),
-  createdAt: timestamp6("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp6("updated_at", { withTimezone: true }).defaultNow().notNull()
-});
-var checklistItems = pgTable6("checklist_items", {
-  id: uuid6("id").defaultRandom().primaryKey(),
-  diagnosticDossierId: uuid6("diagnostic_dossier_id").references(() => diagnosticDossiers.id, { onDelete: "cascade" }).notNull(),
-  category: checklistCategoryEnum("category").notNull(),
-  itemLabel: varchar5("item_label", { length: 255 }).notNull(),
-  isChecked: boolean3("is_checked").default(false).notNull(),
-  notes: text5("notes")
-});
-var proofPhotos = pgTable6("proof_photos", {
-  id: uuid6("id").defaultRandom().primaryKey(),
-  diagnosticDossierId: uuid6("diagnostic_dossier_id").references(() => diagnosticDossiers.id, { onDelete: "cascade" }).notNull(),
-  photoType: photoTypeEnum("photo_type").notNull(),
-  photoUrl: text5("photo_url").notNull(),
-  capturedTimestamp: timestamp6("captured_timestamp", { withTimezone: true }).defaultNow().notNull(),
-  capturedLatitude: doublePrecision3("captured_latitude").notNull(),
-  capturedLongitude: doublePrecision3("captured_longitude").notNull(),
-  isLiveCameraCaptured: boolean3("is_live_camera_captured").default(true).notNull()
-});
-var diagnosticDossiersRelations = relations6(diagnosticDossiers, ({ one, many }) => ({
-  workOrder: one(workOrders, {
-    fields: [diagnosticDossiers.workOrderId],
-    references: [workOrders.id]
-  }),
-  leadTechnician: one(users, {
-    fields: [diagnosticDossiers.leadTechnicianId],
-    references: [users.id]
-  }),
-  checklistItems: many(checklistItems),
-  proofPhotos: many(proofPhotos)
-}));
-var checklistItemsRelations = relations6(checklistItems, ({ one }) => ({
-  dossier: one(diagnosticDossiers, {
-    fields: [checklistItems.diagnosticDossierId],
-    references: [diagnosticDossiers.id]
-  })
-}));
-var proofPhotosRelations = relations6(proofPhotos, ({ one }) => ({
-  dossier: one(diagnosticDossiers, {
-    fields: [proofPhotos.diagnosticDossierId],
-    references: [diagnosticDossiers.id]
-  })
-}));
-
 // src/db/schema/expenses.ts
-import { pgTable as pgTable7, uuid as uuid7, varchar as varchar6, text as text6, numeric as numeric4, boolean as boolean4, timestamp as timestamp7, doublePrecision as doublePrecision4, integer as integer3, pgEnum as pgEnum6 } from "drizzle-orm/pg-core";
-import { relations as relations7 } from "drizzle-orm";
-var expenseApprovalStatusEnum = pgEnum6("expense_approval_status", [
+import { pgTable as pgTable6, uuid as uuid6, varchar as varchar5, text as text5, numeric as numeric3, boolean as boolean3, timestamp as timestamp6, doublePrecision as doublePrecision3, integer as integer3, pgEnum as pgEnum5 } from "drizzle-orm/pg-core";
+import { relations as relations6 } from "drizzle-orm";
+var expenseApprovalStatusEnum = pgEnum5("expense_approval_status", [
   "PENDING_SUPERVISOR_APPROVAL",
   "APPROVED",
   "FLAGGED_REJECTED"
 ]);
-var expenseClaims = pgTable7("expense_claims", {
-  id: uuid7("id").defaultRandom().primaryKey(),
-  workOrderId: uuid7("work_order_id").references(() => workOrders.id, { onDelete: "cascade" }).notNull(),
-  leadTechnicianId: uuid7("lead_technician_id").references(() => users.id).notNull(),
-  vendorName: varchar6("vendor_name", { length: 255 }).notNull(),
-  receiptNumber: varchar6("receipt_number", { length: 100 }),
-  totalAmount: numeric4("total_amount", { precision: 10, scale: 2 }).notNull(),
-  currency: varchar6("currency", { length: 10 }).default("LKR").notNull(),
-  receiptImageUrl: text6("receipt_image_url").notNull(),
-  receiptStoreLatitude: doublePrecision4("receipt_store_latitude").notNull(),
-  receiptStoreLongitude: doublePrecision4("receipt_store_longitude").notNull(),
-  receiptCapturedAt: timestamp7("receipt_captured_at", { withTimezone: true }).defaultNow().notNull(),
-  isThresholdExceeded: boolean4("is_threshold_exceeded").default(false).notNull(),
+var expenseClaims = pgTable6("expense_claims", {
+  id: uuid6("id").defaultRandom().primaryKey(),
+  workOrderId: uuid6("work_order_id").references(() => workOrders.id, { onDelete: "cascade" }).notNull(),
+  leadTechnicianId: uuid6("lead_technician_id").references(() => users.id).notNull(),
+  vendorName: varchar5("vendor_name", { length: 255 }).notNull(),
+  receiptNumber: varchar5("receipt_number", { length: 100 }),
+  totalAmount: numeric3("total_amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar5("currency", { length: 10 }).default("LKR").notNull(),
+  receiptImageUrl: text5("receipt_image_url").notNull(),
+  receiptStoreLatitude: doublePrecision3("receipt_store_latitude").notNull(),
+  receiptStoreLongitude: doublePrecision3("receipt_store_longitude").notNull(),
+  receiptCapturedAt: timestamp6("receipt_captured_at", { withTimezone: true }).defaultNow().notNull(),
+  isThresholdExceeded: boolean3("is_threshold_exceeded").default(false).notNull(),
   approvalStatus: expenseApprovalStatusEnum("approval_status").default("PENDING_SUPERVISOR_APPROVAL").notNull(),
-  reviewedBySupervisorId: uuid7("reviewed_by_supervisor_id").references(() => users.id),
-  reviewedAt: timestamp7("reviewed_at", { withTimezone: true }),
-  rejectionReason: text6("rejection_reason"),
-  createdAt: timestamp7("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp7("updated_at", { withTimezone: true }).defaultNow().notNull()
+  reviewedBySupervisorId: uuid6("reviewed_by_supervisor_id").references(() => users.id),
+  reviewedAt: timestamp6("reviewed_at", { withTimezone: true }),
+  rejectionReason: text5("rejection_reason"),
+  createdAt: timestamp6("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp6("updated_at", { withTimezone: true }).defaultNow().notNull()
 });
-var expenseItems = pgTable7("expense_items", {
-  id: uuid7("id").defaultRandom().primaryKey(),
-  expenseClaimId: uuid7("expense_claim_id").references(() => expenseClaims.id, { onDelete: "cascade" }).notNull(),
-  partDescription: varchar6("part_description", { length: 255 }).notNull(),
+var expenseItems = pgTable6("expense_items", {
+  id: uuid6("id").defaultRandom().primaryKey(),
+  expenseClaimId: uuid6("expense_claim_id").references(() => expenseClaims.id, { onDelete: "cascade" }).notNull(),
+  partDescription: varchar5("part_description", { length: 255 }).notNull(),
   quantity: integer3("quantity").default(1).notNull(),
-  unitPrice: numeric4("unit_price", { precision: 10, scale: 2 }).notNull(),
-  totalPrice: numeric4("total_price", { precision: 10, scale: 2 }).notNull()
+  unitPrice: numeric3("unit_price", { precision: 10, scale: 2 }).notNull(),
+  totalPrice: numeric3("total_price", { precision: 10, scale: 2 }).notNull()
 });
-var expenseClaimsRelations = relations7(expenseClaims, ({ one, many }) => ({
+var expenseClaimsRelations = relations6(expenseClaims, ({ one, many }) => ({
   workOrder: one(workOrders, {
     fields: [expenseClaims.workOrderId],
     references: [workOrders.id]
@@ -433,7 +347,7 @@ var expenseClaimsRelations = relations7(expenseClaims, ({ one, many }) => ({
   }),
   items: many(expenseItems)
 }));
-var expenseItemsRelations = relations7(expenseItems, ({ one }) => ({
+var expenseItemsRelations = relations6(expenseItems, ({ one }) => ({
   claim: one(expenseClaims, {
     fields: [expenseItems.expenseClaimId],
     references: [expenseClaims.id]
@@ -441,37 +355,37 @@ var expenseItemsRelations = relations7(expenseItems, ({ one }) => ({
 }));
 
 // src/db/schema/billing.ts
-import { pgTable as pgTable8, uuid as uuid8, varchar as varchar7, numeric as numeric5, timestamp as timestamp8, pgEnum as pgEnum7 } from "drizzle-orm/pg-core";
-import { relations as relations8 } from "drizzle-orm";
-var invoiceStatusEnum = pgEnum7("invoice_status", [
+import { pgTable as pgTable7, uuid as uuid7, varchar as varchar6, numeric as numeric4, timestamp as timestamp7, pgEnum as pgEnum6 } from "drizzle-orm/pg-core";
+import { relations as relations7 } from "drizzle-orm";
+var invoiceStatusEnum = pgEnum6("invoice_status", [
   "DRAFT_ESTIMATE",
   "APPROVED_BY_SUPERVISOR",
   "ISSUED_TO_CLIENT",
   "PAID"
 ]);
-var billingInvoices = pgTable8("billing_invoices", {
-  id: uuid8("id").defaultRandom().primaryKey(),
-  invoiceNumber: varchar7("invoice_number", { length: 50 }).notNull().unique(),
-  workOrderId: uuid8("work_order_id").references(() => workOrders.id, { onDelete: "cascade" }).notNull().unique(),
-  clientFacilityId: uuid8("client_facility_id").references(() => clientFacilities.id).notNull(),
-  clerkId: uuid8("clerk_id").references(() => users.id).notNull(),
-  totalBillableLaborHours: numeric5("total_billable_labor_hours", { precision: 8, scale: 2 }).notNull(),
-  hourlyLaborRateApplied: numeric5("hourly_labor_rate_applied", { precision: 10, scale: 2 }).notNull(),
-  subtotalLabor: numeric5("subtotal_labor", { precision: 12, scale: 2 }).notNull(),
-  subtotalApprovedParts: numeric5("subtotal_approved_parts", { precision: 12, scale: 2 }).default("0.00").notNull(),
-  partsMarkupPercentApplied: numeric5("parts_markup_percent_applied", { precision: 5, scale: 2 }).default("0.00").notNull(),
-  subtotalPartsWithMarkup: numeric5("subtotal_parts_with_markup", { precision: 12, scale: 2 }).default("0.00").notNull(),
-  fleetEquipmentFee: numeric5("fleet_equipment_fee", { precision: 10, scale: 2 }).default("0.00").notNull(),
-  taxPercent: numeric5("tax_percent", { precision: 5, scale: 2 }).default("8.00").notNull(),
-  taxAmount: numeric5("tax_amount", { precision: 12, scale: 2 }).notNull(),
-  grandTotal: numeric5("grand_total", { precision: 12, scale: 2 }).notNull(),
+var billingInvoices = pgTable7("billing_invoices", {
+  id: uuid7("id").defaultRandom().primaryKey(),
+  invoiceNumber: varchar6("invoice_number", { length: 50 }).notNull().unique(),
+  workOrderId: uuid7("work_order_id").references(() => workOrders.id, { onDelete: "cascade" }).notNull().unique(),
+  clientFacilityId: uuid7("client_facility_id").references(() => clientFacilities.id).notNull(),
+  clerkId: uuid7("clerk_id").references(() => users.id).notNull(),
+  totalBillableLaborHours: numeric4("total_billable_labor_hours", { precision: 8, scale: 2 }).notNull(),
+  hourlyLaborRateApplied: numeric4("hourly_labor_rate_applied", { precision: 10, scale: 2 }).notNull(),
+  subtotalLabor: numeric4("subtotal_labor", { precision: 12, scale: 2 }).notNull(),
+  subtotalApprovedParts: numeric4("subtotal_approved_parts", { precision: 12, scale: 2 }).default("0.00").notNull(),
+  partsMarkupPercentApplied: numeric4("parts_markup_percent_applied", { precision: 5, scale: 2 }).default("0.00").notNull(),
+  subtotalPartsWithMarkup: numeric4("subtotal_parts_with_markup", { precision: 12, scale: 2 }).default("0.00").notNull(),
+  fleetEquipmentFee: numeric4("fleet_equipment_fee", { precision: 10, scale: 2 }).default("0.00").notNull(),
+  taxPercent: numeric4("tax_percent", { precision: 5, scale: 2 }).default("8.00").notNull(),
+  taxAmount: numeric4("tax_amount", { precision: 12, scale: 2 }).notNull(),
+  grandTotal: numeric4("grand_total", { precision: 12, scale: 2 }).notNull(),
   status: invoiceStatusEnum("status").default("DRAFT_ESTIMATE").notNull(),
-  issueDate: timestamp8("issue_date", { withTimezone: true }).defaultNow().notNull(),
-  dueDate: timestamp8("due_date", { withTimezone: true }).notNull(),
-  createdAt: timestamp8("created_at", { withTimezone: true }).defaultNow().notNull(),
-  updatedAt: timestamp8("updated_at", { withTimezone: true }).defaultNow().notNull()
+  issueDate: timestamp7("issue_date", { withTimezone: true }).defaultNow().notNull(),
+  dueDate: timestamp7("due_date", { withTimezone: true }).notNull(),
+  createdAt: timestamp7("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp7("updated_at", { withTimezone: true }).defaultNow().notNull()
 });
-var billingInvoicesRelations = relations8(billingInvoices, ({ one }) => ({
+var billingInvoicesRelations = relations7(billingInvoices, ({ one }) => ({
   workOrder: one(workOrders, {
     fields: [billingInvoices.workOrderId],
     references: [workOrders.id]
@@ -487,26 +401,26 @@ var billingInvoicesRelations = relations8(billingInvoices, ({ one }) => ({
 }));
 
 // src/db/schema/notifications.ts
-import { pgTable as pgTable9, uuid as uuid9, varchar as varchar8, text as text7, boolean as boolean5, timestamp as timestamp9, pgEnum as pgEnum8 } from "drizzle-orm/pg-core";
-import { relations as relations9 } from "drizzle-orm";
-var notificationTypeEnum = pgEnum8("notification_type", [
+import { pgTable as pgTable8, uuid as uuid8, varchar as varchar7, text as text6, boolean as boolean4, timestamp as timestamp8, pgEnum as pgEnum7 } from "drizzle-orm/pg-core";
+import { relations as relations8 } from "drizzle-orm";
+var notificationTypeEnum = pgEnum7("notification_type", [
   "URGENT_DISPATCH",
   "GEOFENCE_BREACH_ALERT",
   "EXPENSE_THRESHOLD_ALERT",
   "EXPENSE_APPROVED",
   "JOB_COMPLETED"
 ]);
-var systemNotifications = pgTable9("system_notifications", {
-  id: uuid9("id").defaultRandom().primaryKey(),
-  recipientUserId: uuid9("recipient_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
-  workOrderId: uuid9("work_order_id").references(() => workOrders.id, { onDelete: "set null" }),
+var systemNotifications = pgTable8("system_notifications", {
+  id: uuid8("id").defaultRandom().primaryKey(),
+  recipientUserId: uuid8("recipient_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  workOrderId: uuid8("work_order_id").references(() => workOrders.id, { onDelete: "set null" }),
   notificationType: notificationTypeEnum("notification_type").notNull(),
-  title: varchar8("title", { length: 255 }).notNull(),
-  body: text7("body").notNull(),
-  isRead: boolean5("is_read").default(false).notNull(),
-  createdAt: timestamp9("created_at", { withTimezone: true }).defaultNow().notNull()
+  title: varchar7("title", { length: 255 }).notNull(),
+  body: text6("body").notNull(),
+  isRead: boolean4("is_read").default(false).notNull(),
+  createdAt: timestamp8("created_at", { withTimezone: true }).defaultNow().notNull()
 });
-var systemNotificationsRelations = relations9(systemNotifications, ({ one }) => ({
+var systemNotificationsRelations = relations8(systemNotifications, ({ one }) => ({
   recipient: one(users, {
     fields: [systemNotifications.recipientUserId],
     references: [users.id]
@@ -993,7 +907,7 @@ import { eq as eq3 } from "drizzle-orm";
 async function getFacilities(_req, res) {
   try {
     const list = await db.query.clientFacilities.findMany({
-      orderBy: (facilities, { desc: desc7 }) => [desc7(facilities.createdAt)]
+      orderBy: (facilities, { desc: desc6 }) => [desc6(facilities.createdAt)]
     });
     res.status(200).json({
       count: list.length,
@@ -1126,7 +1040,7 @@ async function getLiveFleetTracking(_req, res) {
           }
         }
       },
-      orderBy: (wo, { desc: desc7 }) => [desc7(wo.createdAt)]
+      orderBy: (wo, { desc: desc6 }) => [desc6(wo.createdAt)]
     });
     const activeOrderIds = activeOrders.map((wo) => wo.id);
     let activeAttendances = [];
@@ -1800,7 +1714,7 @@ async function getTeamTelemetry(req, res) {
       where: eq5(siteAttendance.workOrderId, id),
       with: {
         auditLogs: {
-          orderBy: (logs, { desc: desc7 }) => [desc7(logs.recordedTimestamp)]
+          orderBy: (logs, { desc: desc6 }) => [desc6(logs.recordedTimestamp)]
         }
       },
       orderBy: [desc(siteAttendance.createdAt)]
@@ -2585,367 +2499,35 @@ attendanceRouter.post("/resume-shift", resumeShift);
 attendanceRouter.get("/current", getCurrentActiveAttendance);
 attendanceRouter.get("/work-order/:id", getAttendanceTimeline);
 
-// src/routes/dossier.route.ts
+// src/routes/expense.route.ts
 import { Router as Router7 } from "express";
 
-// src/schemas/dossier.schema.ts
-import { z as z6 } from "zod";
-var checklistCategoryEnum2 = z6.enum([
-  "COMPRESSOR_SYSTEM",
-  "REFRIGERANT_CIRCUIT",
-  "ELECTRICAL_CONTROLS",
-  "CONDENSER_AIR_FLOW"
-]);
-var photoTypeEnum2 = z6.enum([
-  "BASELINE_BEFORE",
-  "POST_SERVICE_AFTER",
-  "DEFECT_EVIDENCE",
-  "REPLACED_PART"
-]);
-var createOrUpdateDossierSchema = z6.object({
-  workOrderId: z6.string().uuid("Valid work order UUID required"),
-  equipmentModel: z6.string().min(1, "Equipment model is required"),
-  equipmentSerialNumber: z6.string().optional(),
-  baselineSuctionPressurePsi: z6.number().optional(),
-  postServiceSuctionPressurePsi: z6.number().optional(),
-  baselineDischargePressurePsi: z6.number().optional(),
-  postServiceDischargePressurePsi: z6.number().optional(),
-  baselineMotorRunningAmps: z6.number().optional(),
-  postServiceMotorRunningAmps: z6.number().optional(),
-  baselineCoilTempDifferential: z6.number().optional(),
-  postServiceCoilTempDifferential: z6.number().optional(),
-  diagnosticNotes: z6.string().optional(),
-  isCompleted: z6.boolean().optional()
-});
-var checklistItemSchema = z6.object({
-  category: checklistCategoryEnum2,
-  itemLabel: z6.string().min(1, "Item label is required"),
-  isChecked: z6.boolean().default(false),
-  notes: z6.string().optional()
-});
-var submitChecklistSchema = z6.object({
-  items: z6.array(checklistItemSchema).min(1, "At least one checklist item required")
-});
-var attachProofPhotoSchema = z6.object({
-  photoType: photoTypeEnum2,
-  photoUrl: z6.string().min(1, "Photo URL or base64 data string is required"),
-  capturedLatitude: z6.number().min(-90).max(90, "Valid latitude required"),
-  capturedLongitude: z6.number().min(-180).max(180, "Valid longitude required"),
-  isLiveCameraCaptured: z6.boolean().default(true),
-  capturedTimestamp: z6.string().datetime().optional()
-});
-
-// src/controllers/dossier.controller.ts
-import { eq as eq9, desc as desc4 } from "drizzle-orm";
-async function createOrUpdateDossier(req, res) {
-  try {
-    const authUser = req.user;
-    if (!authUser) {
-      res.status(401).json({ error: "Unauthorized", message: "Authentication required." });
-      return;
-    }
-    if (!req.body.workOrderId && req.params.id) {
-      req.body.workOrderId = req.params.id;
-    }
-    const parseResult = createOrUpdateDossierSchema.safeParse(req.body);
-    if (!parseResult.success) {
-      res.status(400).json({
-        error: "ValidationError",
-        details: parseResult.error.flatten().fieldErrors
-      });
-      return;
-    }
-    const data = parseResult.data;
-    const workOrder = await db.query.workOrders.findFirst({
-      where: eq9(workOrders.id, data.workOrderId),
-      with: { assignments: true }
-    });
-    if (!workOrder) {
-      res.status(404).json({ error: "NotFound", message: "Work order not found." });
-      return;
-    }
-    const isLead = workOrder.leadTechnicianId === authUser.userId;
-    const isAssigned = workOrder.assignments.some((a) => a.technicianId === authUser.userId);
-    const isSupervisor = authUser.role === "SUPERVISOR";
-    if (!isLead && !isAssigned && !isSupervisor) {
-      res.status(403).json({
-        error: "Forbidden",
-        message: "Only assigned technicians or supervisors may file diagnostic dossiers."
-      });
-      return;
-    }
-    const existingDossier = await db.query.diagnosticDossiers.findFirst({
-      where: eq9(diagnosticDossiers.workOrderId, data.workOrderId)
-    });
-    const now = /* @__PURE__ */ new Date();
-    if (existingDossier) {
-      const updatePayload = {
-        equipmentModel: data.equipmentModel,
-        updatedAt: now
-      };
-      if (data.equipmentSerialNumber !== void 0) {
-        updatePayload.equipmentSerialNumber = data.equipmentSerialNumber;
-      }
-      if (data.baselineSuctionPressurePsi !== void 0) {
-        updatePayload.baselineSuctionPressurePsi = data.baselineSuctionPressurePsi.toString();
-      }
-      if (data.postServiceSuctionPressurePsi !== void 0) {
-        updatePayload.postServiceSuctionPressurePsi = data.postServiceSuctionPressurePsi.toString();
-      }
-      if (data.baselineDischargePressurePsi !== void 0) {
-        updatePayload.baselineDischargePressurePsi = data.baselineDischargePressurePsi.toString();
-      }
-      if (data.postServiceDischargePressurePsi !== void 0) {
-        updatePayload.postServiceDischargePressurePsi = data.postServiceDischargePressurePsi.toString();
-      }
-      if (data.baselineMotorRunningAmps !== void 0) {
-        updatePayload.baselineMotorRunningAmps = data.baselineMotorRunningAmps.toString();
-      }
-      if (data.postServiceMotorRunningAmps !== void 0) {
-        updatePayload.postServiceMotorRunningAmps = data.postServiceMotorRunningAmps.toString();
-      }
-      if (data.baselineCoilTempDifferential !== void 0) {
-        updatePayload.baselineCoilTempDifferential = data.baselineCoilTempDifferential.toString();
-      }
-      if (data.postServiceCoilTempDifferential !== void 0) {
-        updatePayload.postServiceCoilTempDifferential = data.postServiceCoilTempDifferential.toString();
-      }
-      if (data.diagnosticNotes !== void 0) {
-        updatePayload.diagnosticNotes = data.diagnosticNotes;
-      }
-      if (data.isCompleted !== void 0) {
-        updatePayload.isCompleted = data.isCompleted;
-        if (data.isCompleted) {
-          updatePayload.completedAt = now;
-        }
-      }
-      const [updated] = await db.update(diagnosticDossiers).set(updatePayload).where(eq9(diagnosticDossiers.id, existingDossier.id)).returning();
-      res.status(200).json({
-        message: "Diagnostic dossier updated successfully.",
-        dossier: updated
-      });
-      return;
-    }
-    const [newDossier] = await db.insert(diagnosticDossiers).values({
-      workOrderId: data.workOrderId,
-      leadTechnicianId: authUser.userId,
-      equipmentModel: data.equipmentModel,
-      equipmentSerialNumber: data.equipmentSerialNumber || null,
-      baselineSuctionPressurePsi: data.baselineSuctionPressurePsi !== void 0 ? data.baselineSuctionPressurePsi.toString() : null,
-      postServiceSuctionPressurePsi: data.postServiceSuctionPressurePsi !== void 0 ? data.postServiceSuctionPressurePsi.toString() : null,
-      baselineDischargePressurePsi: data.baselineDischargePressurePsi !== void 0 ? data.baselineDischargePressurePsi.toString() : null,
-      postServiceDischargePressurePsi: data.postServiceDischargePressurePsi !== void 0 ? data.postServiceDischargePressurePsi.toString() : null,
-      baselineMotorRunningAmps: data.baselineMotorRunningAmps !== void 0 ? data.baselineMotorRunningAmps.toString() : null,
-      postServiceMotorRunningAmps: data.postServiceMotorRunningAmps !== void 0 ? data.postServiceMotorRunningAmps.toString() : null,
-      baselineCoilTempDifferential: data.baselineCoilTempDifferential !== void 0 ? data.baselineCoilTempDifferential.toString() : null,
-      postServiceCoilTempDifferential: data.postServiceCoilTempDifferential !== void 0 ? data.postServiceCoilTempDifferential.toString() : null,
-      diagnosticNotes: data.diagnosticNotes || null,
-      isCompleted: data.isCompleted ?? false,
-      completedAt: data.isCompleted ? now : null
-    }).returning();
-    res.status(201).json({
-      message: "Diagnostic dossier created successfully.",
-      dossier: newDossier
-    });
-  } catch (error) {
-    console.error("[DOSSIER ERROR] Create/update dossier failed:", error);
-    res.status(500).json({
-      error: "InternalServerError",
-      message: "Failed to save diagnostic dossier."
-    });
-  }
-}
-async function getDossierByWorkOrder(req, res) {
-  try {
-    const id = req.params.id;
-    let dossier = await db.query.diagnosticDossiers.findFirst({
-      where: eq9(diagnosticDossiers.workOrderId, id),
-      with: {
-        leadTechnician: {
-          columns: { id: true, fullName: true, email: true, role: true }
-        },
-        checklistItems: true,
-        proofPhotos: {
-          orderBy: [desc4(proofPhotos.capturedTimestamp)]
-        }
-      }
-    });
-    if (!dossier) {
-      dossier = await db.query.diagnosticDossiers.findFirst({
-        where: eq9(diagnosticDossiers.id, id),
-        with: {
-          leadTechnician: {
-            columns: { id: true, fullName: true, email: true, role: true }
-          },
-          checklistItems: true,
-          proofPhotos: {
-            orderBy: [desc4(proofPhotos.capturedTimestamp)]
-          }
-        }
-      });
-    }
-    if (!dossier) {
-      res.status(404).json({
-        error: "NotFound",
-        message: "Diagnostic dossier not found for specified identifier."
-      });
-      return;
-    }
-    const baseSuction = dossier.baselineSuctionPressurePsi ? parseFloat(dossier.baselineSuctionPressurePsi) : null;
-    const postSuction = dossier.postServiceSuctionPressurePsi ? parseFloat(dossier.postServiceSuctionPressurePsi) : null;
-    const baseDischarge = dossier.baselineDischargePressurePsi ? parseFloat(dossier.baselineDischargePressurePsi) : null;
-    const postDischarge = dossier.postServiceDischargePressurePsi ? parseFloat(dossier.postServiceDischargePressurePsi) : null;
-    const baseAmps = dossier.baselineMotorRunningAmps ? parseFloat(dossier.baselineMotorRunningAmps) : null;
-    const postAmps = dossier.postServiceMotorRunningAmps ? parseFloat(dossier.postServiceMotorRunningAmps) : null;
-    const baseTempDiff = dossier.baselineCoilTempDifferential ? parseFloat(dossier.baselineCoilTempDifferential) : null;
-    const postTempDiff = dossier.postServiceCoilTempDifferential ? parseFloat(dossier.postServiceCoilTempDifferential) : null;
-    const totalChecklist = dossier.checklistItems.length;
-    const checkedCount = dossier.checklistItems.filter((item) => item.isChecked).length;
-    const completionRatePercent = totalChecklist > 0 ? Math.round(checkedCount / totalChecklist * 100) : 0;
-    res.status(200).json({
-      dossier,
-      telemetryAnalysis: {
-        suctionPressureDeltaPsi: baseSuction !== null && postSuction !== null ? +(postSuction - baseSuction).toFixed(2) : null,
-        dischargePressureDeltaPsi: baseDischarge !== null && postDischarge !== null ? +(postDischarge - baseDischarge).toFixed(2) : null,
-        motorRunningAmpsReduction: baseAmps !== null && postAmps !== null ? +(baseAmps - postAmps).toFixed(2) : null,
-        coilTempDifferentialGain: baseTempDiff !== null && postTempDiff !== null ? +(postTempDiff - baseTempDiff).toFixed(2) : null,
-        checklistCompletionRatePercent: completionRatePercent,
-        totalPhotosAttached: dossier.proofPhotos.length
-      }
-    });
-  } catch (error) {
-    console.error("[DOSSIER ERROR] Fetch dossier failed:", error);
-    res.status(500).json({
-      error: "InternalServerError",
-      message: "Failed to retrieve diagnostic dossier."
-    });
-  }
-}
-async function submitChecklistItems(req, res) {
-  try {
-    const id = req.params.id;
-    const parseResult = submitChecklistSchema.safeParse(req.body);
-    if (!parseResult.success) {
-      res.status(400).json({
-        error: "ValidationError",
-        details: parseResult.error.flatten().fieldErrors
-      });
-      return;
-    }
-    const dossier = await db.query.diagnosticDossiers.findFirst({
-      where: eq9(diagnosticDossiers.id, id)
-    });
-    if (!dossier) {
-      res.status(404).json({
-        error: "NotFound",
-        message: "Diagnostic dossier not found."
-      });
-      return;
-    }
-    const { items } = parseResult.data;
-    const valuesToInsert = items.map((item) => ({
-      diagnosticDossierId: dossier.id,
-      category: item.category,
-      itemLabel: item.itemLabel,
-      isChecked: item.isChecked,
-      notes: item.notes || null
-    }));
-    const insertedItems = await db.insert(checklistItems).values(valuesToInsert).returning();
-    res.status(201).json({
-      message: `${insertedItems.length} checklist items logged successfully.`,
-      checklistItems: insertedItems
-    });
-  } catch (error) {
-    console.error("[DOSSIER ERROR] Submit checklist failed:", error);
-    res.status(500).json({
-      error: "InternalServerError",
-      message: "Failed to submit checklist items."
-    });
-  }
-}
-async function attachProofPhoto(req, res) {
-  try {
-    const id = req.params.id;
-    const parseResult = attachProofPhotoSchema.safeParse(req.body);
-    if (!parseResult.success) {
-      res.status(400).json({
-        error: "ValidationError",
-        details: parseResult.error.flatten().fieldErrors
-      });
-      return;
-    }
-    const dossier = await db.query.diagnosticDossiers.findFirst({
-      where: eq9(diagnosticDossiers.id, id)
-    });
-    if (!dossier) {
-      res.status(404).json({
-        error: "NotFound",
-        message: "Diagnostic dossier not found."
-      });
-      return;
-    }
-    const data = parseResult.data;
-    const [newPhoto] = await db.insert(proofPhotos).values({
-      diagnosticDossierId: dossier.id,
-      photoType: data.photoType,
-      photoUrl: data.photoUrl,
-      capturedLatitude: data.capturedLatitude,
-      capturedLongitude: data.capturedLongitude,
-      isLiveCameraCaptured: data.isLiveCameraCaptured,
-      capturedTimestamp: data.capturedTimestamp ? new Date(data.capturedTimestamp) : /* @__PURE__ */ new Date()
-    }).returning();
-    res.status(201).json({
-      message: "Proof photo attached successfully with geotag metadata.",
-      proofPhoto: newPhoto
-    });
-  } catch (error) {
-    console.error("[DOSSIER ERROR] Attach photo failed:", error);
-    res.status(500).json({
-      error: "InternalServerError",
-      message: "Failed to attach proof photo."
-    });
-  }
-}
-
-// src/routes/dossier.route.ts
-var dossierRouter = Router7();
-dossierRouter.use(authenticateToken);
-dossierRouter.post("/", createOrUpdateDossier);
-dossierRouter.get("/work-order/:id", getDossierByWorkOrder);
-dossierRouter.get("/:id", getDossierByWorkOrder);
-dossierRouter.patch("/:id", createOrUpdateDossier);
-dossierRouter.post("/:id/checklist", submitChecklistItems);
-dossierRouter.post("/:id/photos", attachProofPhoto);
-
-// src/routes/expense.route.ts
-import { Router as Router8 } from "express";
-
 // src/schemas/expense.schema.ts
-import { z as z7 } from "zod";
-var expenseApprovalStatusEnum2 = z7.enum([
+import { z as z6 } from "zod";
+var expenseApprovalStatusEnum2 = z6.enum([
   "PENDING_SUPERVISOR_APPROVAL",
   "APPROVED",
   "FLAGGED_REJECTED"
 ]);
-var expenseItemInputSchema = z7.object({
-  partDescription: z7.string().min(1, "Part description is required"),
-  quantity: z7.number().int().positive("Quantity must be at least 1").default(1),
-  unitPrice: z7.number().positive("Unit price must be positive")
+var expenseItemInputSchema = z6.object({
+  partDescription: z6.string().min(1, "Part description is required"),
+  quantity: z6.number().int().positive("Quantity must be at least 1").default(1),
+  unitPrice: z6.number().positive("Unit price must be positive")
 });
-var createExpenseClaimSchema = z7.object({
-  workOrderId: z7.string().uuid("Valid work order UUID required"),
-  vendorName: z7.string().min(1, "Vendor name is required"),
-  receiptNumber: z7.string().optional(),
-  currency: z7.string().default("LKR"),
-  receiptImageUrl: z7.string().min(1, "Receipt image URL is required"),
-  receiptStoreLatitude: z7.number().min(-90).max(90, "Valid latitude required"),
-  receiptStoreLongitude: z7.number().min(-180).max(180, "Valid longitude required"),
-  receiptCapturedAt: z7.string().datetime().optional(),
-  items: z7.array(expenseItemInputSchema).min(1, "At least one line item is required")
+var createExpenseClaimSchema = z6.object({
+  workOrderId: z6.string().uuid("Valid work order UUID required"),
+  vendorName: z6.string().min(1, "Vendor name is required"),
+  receiptNumber: z6.string().optional(),
+  currency: z6.string().default("LKR"),
+  receiptImageUrl: z6.string().min(1, "Receipt image URL is required"),
+  receiptStoreLatitude: z6.number().min(-90).max(90, "Valid latitude required"),
+  receiptStoreLongitude: z6.number().min(-180).max(180, "Valid longitude required"),
+  receiptCapturedAt: z6.string().datetime().optional(),
+  items: z6.array(expenseItemInputSchema).min(1, "At least one line item is required")
 });
-var reviewExpenseClaimSchema = z7.object({
-  approvalStatus: z7.enum(["APPROVED", "FLAGGED_REJECTED"]),
-  rejectionReason: z7.string().optional()
+var reviewExpenseClaimSchema = z6.object({
+  approvalStatus: z6.enum(["APPROVED", "FLAGGED_REJECTED"]),
+  rejectionReason: z6.string().optional()
 }).refine(
   (data) => {
     if (data.approvalStatus === "FLAGGED_REJECTED" && (!data.rejectionReason || data.rejectionReason.trim().length === 0)) {
@@ -2960,7 +2542,7 @@ var reviewExpenseClaimSchema = z7.object({
 );
 
 // src/controllers/expense.controller.ts
-import { eq as eq10, desc as desc5 } from "drizzle-orm";
+import { eq as eq9, desc as desc4 } from "drizzle-orm";
 var EXPENSE_THRESHOLD_LKR = Number(process.env.EXPENSE_THRESHOLD_LKR || 25e3);
 async function createExpenseClaim(req, res) {
   try {
@@ -2979,7 +2561,7 @@ async function createExpenseClaim(req, res) {
     }
     const data = parseResult.data;
     const workOrder = await db.query.workOrders.findFirst({
-      where: eq10(workOrders.id, data.workOrderId),
+      where: eq9(workOrders.id, data.workOrderId),
       with: { assignments: true }
     });
     if (!workOrder) {
@@ -3064,7 +2646,7 @@ async function getExpensesByWorkOrder(req, res) {
   try {
     const id = req.params.id;
     const claims = await db.query.expenseClaims.findMany({
-      where: eq10(expenseClaims.workOrderId, id),
+      where: eq9(expenseClaims.workOrderId, id),
       with: {
         leadTechnician: {
           columns: { id: true, fullName: true, email: true }
@@ -3074,7 +2656,7 @@ async function getExpensesByWorkOrder(req, res) {
         },
         items: true
       },
-      orderBy: [desc5(expenseClaims.createdAt)]
+      orderBy: [desc4(expenseClaims.createdAt)]
     });
     let totalClaimed = 0;
     let totalApproved = 0;
@@ -3121,7 +2703,7 @@ async function getAllExpenses(req, res) {
       return;
     }
     const statusParam = req.query.status;
-    const whereClause = statusParam && ["PENDING_SUPERVISOR_APPROVAL", "APPROVED", "FLAGGED_REJECTED"].includes(statusParam) ? eq10(expenseClaims.approvalStatus, statusParam) : void 0;
+    const whereClause = statusParam && ["PENDING_SUPERVISOR_APPROVAL", "APPROVED", "FLAGGED_REJECTED"].includes(statusParam) ? eq9(expenseClaims.approvalStatus, statusParam) : void 0;
     const claims = await db.query.expenseClaims.findMany({
       where: whereClause,
       with: {
@@ -3133,7 +2715,7 @@ async function getAllExpenses(req, res) {
         },
         items: true
       },
-      orderBy: [desc5(expenseClaims.createdAt)]
+      orderBy: [desc4(expenseClaims.createdAt)]
     });
     let totalClaimed = 0;
     let totalApproved = 0;
@@ -3174,7 +2756,7 @@ async function getAllExpenses(req, res) {
 }
 
 // src/controllers/expenseApproval.controller.ts
-import { eq as eq11 } from "drizzle-orm";
+import { eq as eq10 } from "drizzle-orm";
 async function reviewExpenseClaim(req, res) {
   try {
     const authUser = req.user;
@@ -3200,7 +2782,7 @@ async function reviewExpenseClaim(req, res) {
     }
     const { approvalStatus, rejectionReason } = parseResult.data;
     const claim = await db.query.expenseClaims.findFirst({
-      where: eq11(expenseClaims.id, id),
+      where: eq10(expenseClaims.id, id),
       with: { workOrder: true }
     });
     if (!claim) {
@@ -3214,7 +2796,7 @@ async function reviewExpenseClaim(req, res) {
       reviewedAt: now,
       rejectionReason: approvalStatus === "FLAGGED_REJECTED" ? rejectionReason : null,
       updatedAt: now
-    }).where(eq11(expenseClaims.id, id)).returning();
+    }).where(eq10(expenseClaims.id, id)).returning();
     await db.insert(systemNotifications).values({
       recipientUserId: claim.leadTechnicianId,
       workOrderId: claim.workOrderId,
@@ -3236,12 +2818,12 @@ async function reviewExpenseClaim(req, res) {
 }
 
 // src/middleware/expenseLock.middleware.ts
-import { eq as eq12 } from "drizzle-orm";
+import { eq as eq11 } from "drizzle-orm";
 async function verifyExpenseNotLocked(req, res, next) {
   try {
     const id = req.params.id;
     const claim = await db.query.expenseClaims.findFirst({
-      where: eq12(expenseClaims.id, id)
+      where: eq11(expenseClaims.id, id)
     });
     if (!claim) {
       res.status(404).json({
@@ -3268,7 +2850,7 @@ async function verifyExpenseNotLocked(req, res, next) {
 }
 
 // src/routes/expense.route.ts
-var expenseRouter = Router8();
+var expenseRouter = Router7();
 expenseRouter.use(authenticateToken);
 expenseRouter.post("/", createExpenseClaim);
 expenseRouter.get("/", getAllExpenses);
@@ -3281,13 +2863,13 @@ expenseRouter.patch(
 );
 
 // src/routes/billing.route.ts
-import { Router as Router9 } from "express";
+import { Router as Router8 } from "express";
 
 // src/services/billingCalculator.service.ts
-import { eq as eq13, and as and6 } from "drizzle-orm";
+import { eq as eq12, and as and6 } from "drizzle-orm";
 async function compileWorkOrderBillingMetrics(workOrderId, partsMarkupOverride) {
   const workOrder = await db.query.workOrders.findFirst({
-    where: eq13(workOrders.id, workOrderId),
+    where: eq12(workOrders.id, workOrderId),
     with: {
       facility: true,
       fleetAsset: true,
@@ -3303,7 +2885,7 @@ async function compileWorkOrderBillingMetrics(workOrderId, partsMarkupOverride) 
     throw new Error(`Work order '${workOrderId}' not found.`);
   }
   const attendanceSessions = await db.query.siteAttendance.findMany({
-    where: eq13(siteAttendance.workOrderId, workOrderId),
+    where: eq12(siteAttendance.workOrderId, workOrderId),
     with: {
       technician: true
     }
@@ -3361,8 +2943,8 @@ async function compileWorkOrderBillingMetrics(workOrderId, partsMarkupOverride) 
   const hourlyLaborRateApplied = totalBillableLaborHours > 0 ? +(subtotalLabor / totalBillableLaborHours).toFixed(2) : 85;
   const approvedClaims = await db.query.expenseClaims.findMany({
     where: and6(
-      eq13(expenseClaims.workOrderId, workOrderId),
-      eq13(expenseClaims.approvalStatus, "APPROVED")
+      eq12(expenseClaims.workOrderId, workOrderId),
+      eq12(expenseClaims.approvalStatus, "APPROVED")
     )
   });
   const subtotalApprovedParts = +approvedClaims.reduce((acc, claim) => acc + parseFloat(claim.totalAmount), 0).toFixed(2);
@@ -3400,10 +2982,10 @@ async function compileWorkOrderBillingMetrics(workOrderId, partsMarkupOverride) 
 }
 
 // src/controllers/billing.controller.ts
-import { eq as eq14 } from "drizzle-orm";
-import { z as z8 } from "zod";
-var updateInvoiceStatusSchema = z8.object({
-  status: z8.enum([
+import { eq as eq13 } from "drizzle-orm";
+import { z as z7 } from "zod";
+var updateInvoiceStatusSchema = z7.object({
+  status: z7.enum([
     "DRAFT_ESTIMATE",
     "APPROVED_BY_SUPERVISOR",
     "ISSUED_TO_CLIENT",
@@ -3426,7 +3008,7 @@ async function generateEstimate(req, res) {
     }
     const workOrderId = req.params.workOrderId;
     const targetOrder = await db.query.workOrders.findFirst({
-      where: eq14(workOrders.id, workOrderId)
+      where: eq13(workOrders.id, workOrderId)
     });
     if (!targetOrder) {
       res.status(404).json({ error: "NotFound", message: "Work order dispatch not found." });
@@ -3442,7 +3024,7 @@ async function generateEstimate(req, res) {
     const partsMarkupOverride = typeof req.body?.partsMarkupPercent === "number" ? req.body.partsMarkupPercent : void 0;
     const calculation = await compileWorkOrderBillingMetrics(workOrderId, partsMarkupOverride);
     const existingInvoice = await db.query.billingInvoices.findFirst({
-      where: eq14(billingInvoices.workOrderId, workOrderId)
+      where: eq13(billingInvoices.workOrderId, workOrderId)
     });
     const now = /* @__PURE__ */ new Date();
     if (existingInvoice) {
@@ -3458,7 +3040,7 @@ async function generateEstimate(req, res) {
         taxAmount: calculation.taxAmount.toFixed(2),
         grandTotal: calculation.grandTotal.toFixed(2),
         updatedAt: now
-      }).where(eq14(billingInvoices.id, existingInvoice.id)).returning();
+      }).where(eq13(billingInvoices.id, existingInvoice.id)).returning();
       res.status(200).json({
         message: "Billing estimate re-compiled and updated successfully.",
         invoice: updated,
@@ -3507,7 +3089,7 @@ async function previewEstimate(req, res) {
     }
     const workOrderId = req.params.workOrderId;
     const targetOrder = await db.query.workOrders.findFirst({
-      where: eq14(workOrders.id, workOrderId)
+      where: eq13(workOrders.id, workOrderId)
     });
     if (!targetOrder) {
       res.status(404).json({ error: "NotFound", message: "Work order dispatch not found." });
@@ -3523,7 +3105,7 @@ async function previewEstimate(req, res) {
     const markupParam = req.query.partsMarkupPercent ? parseFloat(req.query.partsMarkupPercent) : void 0;
     const calculation = await compileWorkOrderBillingMetrics(workOrderId, markupParam);
     const existingInvoice = await db.query.billingInvoices.findFirst({
-      where: eq14(billingInvoices.workOrderId, workOrderId),
+      where: eq13(billingInvoices.workOrderId, workOrderId),
       with: {
         facility: true,
         clerk: {
@@ -3547,7 +3129,7 @@ async function getInvoice(req, res) {
   try {
     const id = req.params.id;
     let invoice = await db.query.billingInvoices.findFirst({
-      where: eq14(billingInvoices.id, id),
+      where: eq13(billingInvoices.id, id),
       with: {
         facility: true,
         clerk: {
@@ -3558,7 +3140,7 @@ async function getInvoice(req, res) {
     });
     if (!invoice) {
       invoice = await db.query.billingInvoices.findFirst({
-        where: eq14(billingInvoices.workOrderId, id),
+        where: eq13(billingInvoices.workOrderId, id),
         with: {
           facility: true,
           clerk: {
@@ -3599,7 +3181,7 @@ async function updateInvoiceStatus(req, res) {
     }
     const { status } = parseResult.data;
     const existingInvoice = await db.query.billingInvoices.findFirst({
-      where: eq14(billingInvoices.id, id)
+      where: eq13(billingInvoices.id, id)
     });
     if (!existingInvoice) {
       res.status(404).json({ error: "NotFound", message: "Invoice not found." });
@@ -3609,12 +3191,12 @@ async function updateInvoiceStatus(req, res) {
     const [updatedInvoice] = await db.update(billingInvoices).set({
       status,
       updatedAt: now
-    }).where(eq14(billingInvoices.id, id)).returning();
+    }).where(eq13(billingInvoices.id, id)).returning();
     if (status === "ISSUED_TO_CLIENT" || status === "PAID") {
       await db.update(workOrders).set({
         status: "BILLED",
         updatedAt: now
-      }).where(eq14(workOrders.id, existingInvoice.workOrderId));
+      }).where(eq13(workOrders.id, existingInvoice.workOrderId));
     }
     res.status(200).json({
       message: `Invoice status transitioned to ${status}.`,
@@ -3630,17 +3212,17 @@ async function updateInvoiceStatus(req, res) {
 }
 
 // src/controllers/analytics.controller.ts
-import { eq as eq15 } from "drizzle-orm";
+import { eq as eq14 } from "drizzle-orm";
 async function getSwiftChartsAnalytics(req, res) {
   try {
     const workOrderId = req.params.workOrderId;
     let invoice = await db.query.billingInvoices.findFirst({
-      where: eq15(billingInvoices.workOrderId, workOrderId),
+      where: eq14(billingInvoices.workOrderId, workOrderId),
       with: { facility: true }
     });
     if (!invoice) {
       invoice = await db.query.billingInvoices.findFirst({
-        where: eq15(billingInvoices.id, workOrderId),
+        where: eq14(billingInvoices.id, workOrderId),
         with: { facility: true }
       });
     }
@@ -3661,7 +3243,7 @@ async function getSwiftChartsAnalytics(req, res) {
     const fleetPct = grandTotal > 0 ? +(fleetFee / grandTotal * 100).toFixed(1) : 0;
     const taxPct = grandTotal > 0 ? +(taxAmount / grandTotal * 100).toFixed(1) : 0;
     const attendanceRecords = await db.query.siteAttendance.findMany({
-      where: eq15(siteAttendance.workOrderId, invoice.workOrderId),
+      where: eq14(siteAttendance.workOrderId, invoice.workOrderId),
       with: {
         technician: {
           columns: { id: true, fullName: true, role: true }
@@ -3741,7 +3323,7 @@ async function getSwiftChartsAnalytics(req, res) {
 }
 
 // src/routes/billing.route.ts
-var billingRouter = Router9();
+var billingRouter = Router8();
 billingRouter.use(authenticateToken);
 billingRouter.get(
   "/estimate/:workOrderId",
@@ -3762,16 +3344,16 @@ billingRouter.patch(
 billingRouter.get("/analytics/:workOrderId", getSwiftChartsAnalytics);
 
 // src/routes/users.route.ts
-import { Router as Router10 } from "express";
+import { Router as Router9 } from "express";
 
 // src/controllers/users.controller.ts
-import { eq as eq16, inArray as inArray3, and as and8 } from "drizzle-orm";
+import { eq as eq15, inArray as inArray3, and as and8 } from "drizzle-orm";
 async function getTechnicians(_req, res) {
   try {
     const techUsers = await db.query.users.findMany({
       where: and8(
         inArray3(users.role, ["LEAD_TECHNICIAN", "TECHNICIAN"]),
-        eq16(users.isActive, true)
+        eq15(users.isActive, true)
       ),
       orderBy: (u, { asc }) => [asc(u.fullName)],
       columns: {
@@ -3830,13 +3412,13 @@ async function getTechnicians(_req, res) {
 }
 
 // src/routes/users.route.ts
-var usersRouter = Router10();
+var usersRouter = Router9();
 usersRouter.use(authenticateToken);
 usersRouter.get("/", getTechnicians);
 usersRouter.get("/technicians", getTechnicians);
 
 // src/routes/docs.route.ts
-import { Router as Router11 } from "express";
+import { Router as Router10 } from "express";
 import swaggerUi from "swagger-ui-express";
 
 // src/docs/swagger.json
@@ -3934,17 +3516,6 @@ var swagger_default = {
           totalBillableSeconds: { type: "integer" },
           totalBreakSeconds: { type: "integer" },
           sessionStatus: { type: "string", enum: ["ACTIVE_ON_SITE", "ON_BREAK_VIOLATION", "CLOCKED_OUT"] }
-        }
-      },
-      DiagnosticDossier: {
-        type: "object",
-        properties: {
-          id: { type: "string", format: "uuid" },
-          workOrderId: { type: "string", format: "uuid" },
-          equipmentModel: { type: "string" },
-          baselineSuctionPressurePsi: { type: "string" },
-          postServiceSuctionPressurePsi: { type: "string" },
-          isCompleted: { type: "boolean" }
         }
       },
       ExpenseClaim: {
@@ -4137,29 +3708,6 @@ var swagger_default = {
         }
       }
     },
-    "/dossiers": {
-      post: {
-        summary: "Create or update diagnostic sensor dossier",
-        security: [{ bearerAuth: [] }],
-        tags: ["Diagnostic Dossiers"],
-        responses: {
-          "201": { description: "Dossier saved" }
-        }
-      }
-    },
-    "/dossiers/work-order/{id}": {
-      get: {
-        summary: "Get dossier, checklists, and proof photos",
-        security: [{ bearerAuth: [] }],
-        tags: ["Diagnostic Dossiers"],
-        parameters: [
-          { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }
-        ],
-        responses: {
-          "200": { description: "Complete diagnostic dossier" }
-        }
-      }
-    },
     "/expenses": {
       post: {
         summary: "Submit emergency parts expense claim",
@@ -4222,7 +3770,7 @@ var swagger_default = {
 };
 
 // src/routes/docs.route.ts
-var docsRouter = Router11();
+var docsRouter = Router10();
 docsRouter.get("/json", (_req, res) => {
   res.setHeader("Content-Type", "application/json");
   res.json(swagger_default);
@@ -4233,10 +3781,10 @@ docsRouter.use("/", swaggerUi.serve, swaggerUi.setup(swagger_default, {
 }));
 
 // src/routes/notifications.route.ts
-import { Router as Router12 } from "express";
+import { Router as Router11 } from "express";
 
 // src/controllers/notifications.controller.ts
-import { eq as eq17, desc as desc6, and as and9, isNull as isNull5 } from "drizzle-orm";
+import { eq as eq16, desc as desc5, and as and9, isNull as isNull5 } from "drizzle-orm";
 async function getUserNotifications(req, res) {
   try {
     const authUser = req.user;
@@ -4245,8 +3793,8 @@ async function getUserNotifications(req, res) {
       return;
     }
     const notifications = await db.query.systemNotifications.findMany({
-      where: eq17(systemNotifications.recipientUserId, authUser.userId),
-      orderBy: [desc6(systemNotifications.createdAt)],
+      where: eq16(systemNotifications.recipientUserId, authUser.userId),
+      orderBy: [desc5(systemNotifications.createdAt)],
       limit: 50
     });
     const unreadCount = notifications.filter((n) => !n.isRead).length;
@@ -4274,15 +3822,15 @@ async function markNotificationAsRead(req, res) {
     const id = req.params.id;
     const notification = await db.query.systemNotifications.findFirst({
       where: and9(
-        eq17(systemNotifications.id, id),
-        eq17(systemNotifications.recipientUserId, authUser.userId)
+        eq16(systemNotifications.id, id),
+        eq16(systemNotifications.recipientUserId, authUser.userId)
       )
     });
     if (!notification) {
       res.status(404).json({ error: "NotFound", message: "Notification not found." });
       return;
     }
-    const [updated] = await db.update(systemNotifications).set({ isRead: true }).where(eq17(systemNotifications.id, id)).returning();
+    const [updated] = await db.update(systemNotifications).set({ isRead: true }).where(eq16(systemNotifications.id, id)).returning();
     res.status(200).json({
       message: "Notification marked as read.",
       notification: updated
@@ -4299,7 +3847,7 @@ async function getLiveWidgetTelemetry(req, res) {
   try {
     const technicianId = req.params.technicianId;
     const technician = await db.query.users.findFirst({
-      where: eq17(users.id, technicianId)
+      where: eq16(users.id, technicianId)
     });
     if (!technician) {
       res.status(404).json({ error: "NotFound", message: "Technician not found." });
@@ -4307,7 +3855,7 @@ async function getLiveWidgetTelemetry(req, res) {
     }
     const activeSession = await db.query.siteAttendance.findFirst({
       where: and9(
-        eq17(siteAttendance.technicianId, technicianId),
+        eq16(siteAttendance.technicianId, technicianId),
         isNull5(siteAttendance.clockOutTimestamp)
       ),
       with: {
@@ -4315,7 +3863,7 @@ async function getLiveWidgetTelemetry(req, res) {
           with: { facility: true }
         }
       },
-      orderBy: [desc6(siteAttendance.createdAt)]
+      orderBy: [desc5(siteAttendance.createdAt)]
     });
     if (activeSession && activeSession.workOrder) {
       const now = /* @__PURE__ */ new Date();
@@ -4350,9 +3898,9 @@ async function getLiveWidgetTelemetry(req, res) {
       return;
     }
     const dispatchedJob = await db.query.workOrders.findFirst({
-      where: eq17(workOrders.leadTechnicianId, technicianId),
+      where: eq16(workOrders.leadTechnicianId, technicianId),
       with: { facility: true },
-      orderBy: [desc6(workOrders.createdAt)]
+      orderBy: [desc5(workOrders.createdAt)]
     });
     if (dispatchedJob && (dispatchedJob.status === "EN_ROUTE" || dispatchedJob.status === "DISPATCHED")) {
       const isEnRoute = dispatchedJob.status === "EN_ROUTE";
@@ -4403,10 +3951,10 @@ async function getLiveWidgetTelemetry(req, res) {
 }
 
 // src/routes/notifications.route.ts
-var notificationsRouter = Router12();
+var notificationsRouter = Router11();
 notificationsRouter.get("/", authenticateToken, getUserNotifications);
 notificationsRouter.patch("/:id/read", authenticateToken, markNotificationAsRead);
-var telemetryRouter = Router12();
+var telemetryRouter = Router11();
 telemetryRouter.get("/widget/:technicianId", getLiveWidgetTelemetry);
 
 // src/config/cors.ts
@@ -4454,7 +4002,6 @@ app.use("/api/facilities", facilitiesRouter);
 app.use("/api/fleet", fleetRouter);
 app.use("/api/work-orders", workOrdersRouter);
 app.use("/api/attendance", attendanceRouter);
-app.use("/api/dossiers", dossierRouter);
 app.use("/api/expenses", expenseRouter);
 app.use("/api/billing", billingRouter);
 app.use("/api/users", usersRouter);
