@@ -9,7 +9,7 @@ import {
 import { clockInSchema, clockOutSchema } from '../schemas/attendance.schema';
 import { isInsideGeofence } from '../utils/haversine';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
-import { eq, and, desc, isNull } from 'drizzle-orm';
+import { eq, and, desc, isNull, gte } from 'drizzle-orm';
 
 export async function clockIn(req: Request, res: Response): Promise<void> {
   try {
@@ -306,9 +306,31 @@ export async function getCurrentActiveAttendance(req: Request, res: Response): P
       orderBy: [desc(siteAttendance.createdAt)],
     });
 
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const closedTodaySessions = await db.query.siteAttendance.findMany({
+      where: and(
+        eq(siteAttendance.technicianId, authUser.userId),
+        gte(siteAttendance.clockInTimestamp, startOfToday)
+      ),
+    });
+
+    let todayHistoricalBillableSeconds = 0;
+    let todayHistoricalBreakSeconds = 0;
+
+    for (const s of closedTodaySessions) {
+      if (s.clockOutTimestamp) {
+        todayHistoricalBillableSeconds += s.totalBillableSeconds || 0;
+        todayHistoricalBreakSeconds += s.totalBreakSeconds || 0;
+      }
+    }
+
     res.status(200).json({
       active: !!activeSession,
       session: activeSession || null,
+      todayHistoricalBillableSeconds,
+      todayHistoricalBreakSeconds,
     });
   } catch (error) {
     console.error('[ATTENDANCE ERROR] Get current active attendance failed:', error);

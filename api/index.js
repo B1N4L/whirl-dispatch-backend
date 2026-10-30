@@ -2108,7 +2108,7 @@ var resumeShiftSchema = z5.object({
 });
 
 // src/controllers/attendance.controller.ts
-import { eq as eq7, and as and4, desc as desc2, isNull as isNull3 } from "drizzle-orm";
+import { eq as eq7, and as and4, desc as desc2, isNull as isNull3, gte } from "drizzle-orm";
 async function clockIn(req, res) {
   try {
     const authUser = req.user;
@@ -2352,9 +2352,27 @@ async function getCurrentActiveAttendance(req, res) {
       },
       orderBy: [desc2(siteAttendance.createdAt)]
     });
+    const startOfToday = /* @__PURE__ */ new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const closedTodaySessions = await db.query.siteAttendance.findMany({
+      where: and4(
+        eq7(siteAttendance.technicianId, authUser.userId),
+        gte(siteAttendance.clockInTimestamp, startOfToday)
+      )
+    });
+    let todayHistoricalBillableSeconds = 0;
+    let todayHistoricalBreakSeconds = 0;
+    for (const s of closedTodaySessions) {
+      if (s.clockOutTimestamp) {
+        todayHistoricalBillableSeconds += s.totalBillableSeconds || 0;
+        todayHistoricalBreakSeconds += s.totalBreakSeconds || 0;
+      }
+    }
     res.status(200).json({
       active: !!activeSession,
-      session: activeSession || null
+      session: activeSession || null,
+      todayHistoricalBillableSeconds,
+      todayHistoricalBreakSeconds
     });
   } catch (error) {
     console.error("[ATTENDANCE ERROR] Get current active attendance failed:", error);
