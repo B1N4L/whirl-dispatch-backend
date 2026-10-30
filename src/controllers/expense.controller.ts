@@ -81,7 +81,7 @@ export async function createExpenseClaim(req: Request, res: Response): Promise<v
         receiptNumber: data.receiptNumber || null,
         totalAmount: calculatedTotal.toFixed(2),
         currency: data.currency || 'LKR',
-        receiptImageUrl: data.receiptImageUrl,
+        receiptImageUrl: data.receiptImageUrl || '',
         receiptStoreLatitude: data.receiptStoreLatitude,
         receiptStoreLongitude: data.receiptStoreLongitude,
         receiptCapturedAt: data.receiptCapturedAt ? new Date(data.receiptCapturedAt) : now,

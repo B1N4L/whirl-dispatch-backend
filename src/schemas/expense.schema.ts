@@ -17,7 +17,7 @@ export const createExpenseClaimSchema = z.object({
   vendorName: z.string().min(1, 'Vendor name is required'),
   receiptNumber: z.string().optional(),
   currency: z.string().default('LKR'),
-  receiptImageUrl: z.string().min(1, 'Receipt image URL is required'),
+  receiptImageUrl: z.string().optional().default(''),
   receiptStoreLatitude: z.number().min(-90).max(90, 'Valid latitude required'),
   receiptStoreLongitude: z.number().min(-180).max(180, 'Valid longitude required'),
   receiptCapturedAt: z.string().datetime().optional(),
