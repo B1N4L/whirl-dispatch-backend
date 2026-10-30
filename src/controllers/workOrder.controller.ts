@@ -311,6 +311,76 @@ export async function getWorkOrders(req: Request, res: Response): Promise<void> 
   }
 }
 
+export async function getActiveWorkOrder(req: Request, res: Response): Promise<void> {
+  try {
+    const authUser = (req as AuthenticatedRequest).user;
+    if (!authUser) {
+      res.status(401).json({ error: 'Unauthorized', message: 'Authentication required.' });
+      return;
+    }
+
+    const targetUserId = (req.query.technicianId as string) || authUser.userId;
+
+    const activeOrders = await db.query.workOrders.findMany({
+      where: inArray(workOrders.status, [
+        'DISPATCHED',
+        'EN_ROUTE',
+        'ON_SITE_ACTIVE',
+        'UNACKNOWLEDGED_BREAK',
+        'AWAITING_PARTS_APPROVAL',
+      ]),
+      orderBy: [desc(workOrders.createdAt)],
+      with: {
+        facility: true,
+        fleetAsset: true,
+        leadTechnician: {
+          columns: { id: true, fullName: true, email: true, phone: true, role: true, hourlyLaborRate: true },
+        },
+        supervisor: {
+          columns: { id: true, fullName: true, email: true },
+        },
+        assignments: {
+          with: {
+            technician: {
+              columns: { id: true, fullName: true, email: true, phone: true, role: true, hourlyLaborRate: true },
+            },
+          },
+        },
+      },
+    });
+
+    const userActiveOrders = activeOrders.filter((wo) => {
+      const isLead = wo.leadTechnicianId === targetUserId;
+      const isAssigned = wo.assignments.some((a) => a.technicianId === targetUserId);
+      return isLead || isAssigned;
+    });
+
+    if (userActiveOrders.length === 0) {
+      res.status(200).json({
+        hasActiveDispatch: false,
+        workOrder: null,
+      });
+      return;
+    }
+
+    const activeJob =
+      userActiveOrders.find((wo) =>
+        ['ON_SITE_ACTIVE', 'UNACKNOWLEDGED_BREAK', 'AWAITING_PARTS_APPROVAL', 'EN_ROUTE'].includes(wo.status)
+      ) || userActiveOrders.find((wo) => wo.status === 'DISPATCHED') || userActiveOrders[0];
+
+    res.status(200).json({
+      hasActiveDispatch: true,
+      workOrder: activeJob,
+    });
+  } catch (error) {
+    console.error('[WORK ORDER ERROR] Failed to fetch active dispatch:', error);
+    res.status(500).json({
+      error: 'InternalServerError',
+      message: 'Failed to retrieve active dispatch work order.',
+    });
+  }
+}
+
 export async function getWorkOrderDetail(req: Request, res: Response): Promise<void> {
   try {
     const id = req.params.id as string;

@@ -8,7 +8,7 @@ import {
 } from '../db/schema/index';
 import { createExpenseClaimSchema } from '../schemas/expense.schema';
 import { AuthenticatedRequest } from '../middleware/auth.middleware';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, inArray } from 'drizzle-orm';
 
 const EXPENSE_THRESHOLD_LKR = Number(process.env.EXPENSE_THRESHOLD_LKR || 25000);
 
@@ -197,6 +197,125 @@ export async function getExpensesByWorkOrder(req: Request, res: Response): Promi
     res.status(500).json({
       error: 'InternalServerError',
       message: 'Failed to retrieve expense claims.',
+    });
+  }
+}
+
+export async function getActiveDispatchExpenses(req: Request, res: Response): Promise<void> {
+  try {
+    const authUser = (req as AuthenticatedRequest).user;
+    if (!authUser) {
+      res.status(401).json({ error: 'Unauthorized', message: 'Authentication required.' });
+      return;
+    }
+
+    const targetUserId = (req.query.technicianId as string) || authUser.userId;
+
+    const activeOrders = await db.query.workOrders.findMany({
+      where: inArray(workOrders.status, [
+        'DISPATCHED',
+        'EN_ROUTE',
+        'ON_SITE_ACTIVE',
+        'UNACKNOWLEDGED_BREAK',
+        'AWAITING_PARTS_APPROVAL',
+      ]),
+      orderBy: [desc(workOrders.createdAt)],
+      with: {
+        facility: true,
+        fleetAsset: true,
+        assignments: true,
+      },
+    });
+
+    const userActiveOrders = activeOrders.filter((wo) => {
+      const isLead = wo.leadTechnicianId === targetUserId;
+      const isAssigned = wo.assignments.some((a) => a.technicianId === targetUserId);
+      return isLead || isAssigned;
+    });
+
+    if (userActiveOrders.length === 0) {
+      res.status(200).json({
+        hasActiveDispatch: false,
+        workOrderId: null,
+        workOrder: null,
+        claimsCount: 0,
+        claims: [],
+        financialSummary: {
+          totalClaimedAmount: 0,
+          totalApprovedAmount: 0,
+          pendingClaimsCount: 0,
+          approvedClaimsCount: 0,
+          rejectedClaimsCount: 0,
+        },
+      });
+      return;
+    }
+
+    const activeJob =
+      userActiveOrders.find((wo) =>
+        ['ON_SITE_ACTIVE', 'UNACKNOWLEDGED_BREAK', 'AWAITING_PARTS_APPROVAL', 'EN_ROUTE'].includes(wo.status)
+      ) || userActiveOrders.find((wo) => wo.status === 'DISPATCHED') || userActiveOrders[0];
+
+    const claims = await db.query.expenseClaims.findMany({
+      where: eq(expenseClaims.workOrderId, activeJob.id),
+      with: {
+        workOrder: {
+          columns: { id: true, workOrderNumber: true, title: true },
+          with: {
+            facility: {
+              columns: { id: true, companyName: true, facilityName: true, address: true },
+            },
+          },
+        },
+        leadTechnician: {
+          columns: { id: true, fullName: true, email: true },
+        },
+        reviewedBySupervisor: {
+          columns: { id: true, fullName: true, email: true },
+        },
+        items: true,
+      },
+      orderBy: [desc(expenseClaims.createdAt)],
+    });
+
+    let totalClaimed = 0;
+    let totalApproved = 0;
+    let pendingCount = 0;
+    let approvedCount = 0;
+    let rejectedCount = 0;
+
+    for (const claim of claims) {
+      const amount = parseFloat(claim.totalAmount) || 0;
+      totalClaimed += amount;
+      if (claim.approvalStatus === 'APPROVED') {
+        totalApproved += amount;
+        approvedCount++;
+      } else if (claim.approvalStatus === 'PENDING_SUPERVISOR_APPROVAL') {
+        pendingCount++;
+      } else if (claim.approvalStatus === 'FLAGGED_REJECTED') {
+        rejectedCount++;
+      }
+    }
+
+    res.status(200).json({
+      hasActiveDispatch: true,
+      workOrderId: activeJob.id,
+      workOrder: activeJob,
+      claimsCount: claims.length,
+      claims,
+      financialSummary: {
+        totalClaimedAmount: +totalClaimed.toFixed(2),
+        totalApprovedAmount: +totalApproved.toFixed(2),
+        pendingClaimsCount: pendingCount,
+        approvedClaimsCount: approvedCount,
+        rejectedClaimsCount: rejectedCount,
+      },
+    });
+  } catch (error) {
+    console.error('[EXPENSE ERROR] Failed to fetch active dispatch expenses:', error);
+    res.status(500).json({
+      error: 'InternalServerError',
+      message: 'Failed to retrieve active dispatch expenses.',
     });
   }
 }

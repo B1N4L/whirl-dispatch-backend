@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   createWorkOrder,
   getWorkOrders,
+  getActiveWorkOrder,
   getWorkOrderDetail,
   getTeamTelemetry,
   recordTelemetry,
@@ -15,6 +16,7 @@ export const workOrdersRouter = Router();
 workOrdersRouter.use(authenticateToken);
 
 workOrdersRouter.get('/', getWorkOrders);
+workOrdersRouter.get('/active', getActiveWorkOrder);
 workOrdersRouter.get('/:id', getWorkOrderDetail);
 workOrdersRouter.get('/:id/team-telemetry', getTeamTelemetry);
 workOrdersRouter.post('/:id/telemetry', recordTelemetry);

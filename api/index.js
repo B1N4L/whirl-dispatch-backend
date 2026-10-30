@@ -1608,6 +1608,68 @@ async function getWorkOrders(req, res) {
     });
   }
 }
+async function getActiveWorkOrder(req, res) {
+  try {
+    const authUser = req.user;
+    if (!authUser) {
+      res.status(401).json({ error: "Unauthorized", message: "Authentication required." });
+      return;
+    }
+    const targetUserId = req.query.technicianId || authUser.userId;
+    const activeOrders = await db.query.workOrders.findMany({
+      where: inArray2(workOrders.status, [
+        "DISPATCHED",
+        "EN_ROUTE",
+        "ON_SITE_ACTIVE",
+        "UNACKNOWLEDGED_BREAK",
+        "AWAITING_PARTS_APPROVAL"
+      ]),
+      orderBy: [desc(workOrders.createdAt)],
+      with: {
+        facility: true,
+        fleetAsset: true,
+        leadTechnician: {
+          columns: { id: true, fullName: true, email: true, phone: true, role: true, hourlyLaborRate: true }
+        },
+        supervisor: {
+          columns: { id: true, fullName: true, email: true }
+        },
+        assignments: {
+          with: {
+            technician: {
+              columns: { id: true, fullName: true, email: true, phone: true, role: true, hourlyLaborRate: true }
+            }
+          }
+        }
+      }
+    });
+    const userActiveOrders = activeOrders.filter((wo) => {
+      const isLead = wo.leadTechnicianId === targetUserId;
+      const isAssigned = wo.assignments.some((a) => a.technicianId === targetUserId);
+      return isLead || isAssigned;
+    });
+    if (userActiveOrders.length === 0) {
+      res.status(200).json({
+        hasActiveDispatch: false,
+        workOrder: null
+      });
+      return;
+    }
+    const activeJob = userActiveOrders.find(
+      (wo) => ["ON_SITE_ACTIVE", "UNACKNOWLEDGED_BREAK", "AWAITING_PARTS_APPROVAL", "EN_ROUTE"].includes(wo.status)
+    ) || userActiveOrders.find((wo) => wo.status === "DISPATCHED") || userActiveOrders[0];
+    res.status(200).json({
+      hasActiveDispatch: true,
+      workOrder: activeJob
+    });
+  } catch (error) {
+    console.error("[WORK ORDER ERROR] Failed to fetch active dispatch:", error);
+    res.status(500).json({
+      error: "InternalServerError",
+      message: "Failed to retrieve active dispatch work order."
+    });
+  }
+}
 async function getWorkOrderDetail(req, res) {
   try {
     const id = req.params.id;
@@ -1996,6 +2058,7 @@ async function updateWorkOrderStatus(req, res) {
 var workOrdersRouter = Router5();
 workOrdersRouter.use(authenticateToken);
 workOrdersRouter.get("/", getWorkOrders);
+workOrdersRouter.get("/active", getActiveWorkOrder);
 workOrdersRouter.get("/:id", getWorkOrderDetail);
 workOrdersRouter.get("/:id/team-telemetry", getTeamTelemetry);
 workOrdersRouter.post("/:id/telemetry", recordTelemetry);
@@ -2542,7 +2605,7 @@ var reviewExpenseClaimSchema = z6.object({
 );
 
 // src/controllers/expense.controller.ts
-import { eq as eq9, desc as desc4 } from "drizzle-orm";
+import { eq as eq9, desc as desc4, inArray as inArray3 } from "drizzle-orm";
 var EXPENSE_THRESHOLD_LKR = Number(process.env.EXPENSE_THRESHOLD_LKR || 25e3);
 async function createExpenseClaim(req, res) {
   try {
@@ -2703,6 +2766,114 @@ async function getExpensesByWorkOrder(req, res) {
     });
   }
 }
+async function getActiveDispatchExpenses(req, res) {
+  try {
+    const authUser = req.user;
+    if (!authUser) {
+      res.status(401).json({ error: "Unauthorized", message: "Authentication required." });
+      return;
+    }
+    const targetUserId = req.query.technicianId || authUser.userId;
+    const activeOrders = await db.query.workOrders.findMany({
+      where: inArray3(workOrders.status, [
+        "DISPATCHED",
+        "EN_ROUTE",
+        "ON_SITE_ACTIVE",
+        "UNACKNOWLEDGED_BREAK",
+        "AWAITING_PARTS_APPROVAL"
+      ]),
+      orderBy: [desc4(workOrders.createdAt)],
+      with: {
+        facility: true,
+        fleetAsset: true,
+        assignments: true
+      }
+    });
+    const userActiveOrders = activeOrders.filter((wo) => {
+      const isLead = wo.leadTechnicianId === targetUserId;
+      const isAssigned = wo.assignments.some((a) => a.technicianId === targetUserId);
+      return isLead || isAssigned;
+    });
+    if (userActiveOrders.length === 0) {
+      res.status(200).json({
+        hasActiveDispatch: false,
+        workOrderId: null,
+        workOrder: null,
+        claimsCount: 0,
+        claims: [],
+        financialSummary: {
+          totalClaimedAmount: 0,
+          totalApprovedAmount: 0,
+          pendingClaimsCount: 0,
+          approvedClaimsCount: 0,
+          rejectedClaimsCount: 0
+        }
+      });
+      return;
+    }
+    const activeJob = userActiveOrders.find(
+      (wo) => ["ON_SITE_ACTIVE", "UNACKNOWLEDGED_BREAK", "AWAITING_PARTS_APPROVAL", "EN_ROUTE"].includes(wo.status)
+    ) || userActiveOrders.find((wo) => wo.status === "DISPATCHED") || userActiveOrders[0];
+    const claims = await db.query.expenseClaims.findMany({
+      where: eq9(expenseClaims.workOrderId, activeJob.id),
+      with: {
+        workOrder: {
+          columns: { id: true, workOrderNumber: true, title: true },
+          with: {
+            facility: {
+              columns: { id: true, companyName: true, facilityName: true, address: true }
+            }
+          }
+        },
+        leadTechnician: {
+          columns: { id: true, fullName: true, email: true }
+        },
+        reviewedBySupervisor: {
+          columns: { id: true, fullName: true, email: true }
+        },
+        items: true
+      },
+      orderBy: [desc4(expenseClaims.createdAt)]
+    });
+    let totalClaimed = 0;
+    let totalApproved = 0;
+    let pendingCount = 0;
+    let approvedCount = 0;
+    let rejectedCount = 0;
+    for (const claim of claims) {
+      const amount = parseFloat(claim.totalAmount) || 0;
+      totalClaimed += amount;
+      if (claim.approvalStatus === "APPROVED") {
+        totalApproved += amount;
+        approvedCount++;
+      } else if (claim.approvalStatus === "PENDING_SUPERVISOR_APPROVAL") {
+        pendingCount++;
+      } else if (claim.approvalStatus === "FLAGGED_REJECTED") {
+        rejectedCount++;
+      }
+    }
+    res.status(200).json({
+      hasActiveDispatch: true,
+      workOrderId: activeJob.id,
+      workOrder: activeJob,
+      claimsCount: claims.length,
+      claims,
+      financialSummary: {
+        totalClaimedAmount: +totalClaimed.toFixed(2),
+        totalApprovedAmount: +totalApproved.toFixed(2),
+        pendingClaimsCount: pendingCount,
+        approvedClaimsCount: approvedCount,
+        rejectedClaimsCount: rejectedCount
+      }
+    });
+  } catch (error) {
+    console.error("[EXPENSE ERROR] Failed to fetch active dispatch expenses:", error);
+    res.status(500).json({
+      error: "InternalServerError",
+      message: "Failed to retrieve active dispatch expenses."
+    });
+  }
+}
 async function getAllExpenses(req, res) {
   try {
     const authUser = req.user;
@@ -2858,6 +3029,7 @@ var expenseRouter = Router7();
 expenseRouter.use(authenticateToken);
 expenseRouter.post("/", createExpenseClaim);
 expenseRouter.get("/", getAllExpenses);
+expenseRouter.get("/active", getActiveDispatchExpenses);
 expenseRouter.get("/work-order/:id", getExpensesByWorkOrder);
 expenseRouter.patch(
   "/:id/review",
@@ -3488,12 +3660,12 @@ billingRouter.get("/analytics/:workOrderId", getSwiftChartsAnalytics);
 import { Router as Router9 } from "express";
 
 // src/controllers/users.controller.ts
-import { eq as eq14, inArray as inArray3, and as and9 } from "drizzle-orm";
+import { eq as eq14, inArray as inArray4, and as and9 } from "drizzle-orm";
 async function getTechnicians(_req, res) {
   try {
     const techUsers = await db.query.users.findMany({
       where: and9(
-        inArray3(users.role, ["LEAD_TECHNICIAN", "TECHNICIAN"]),
+        inArray4(users.role, ["LEAD_TECHNICIAN", "TECHNICIAN"]),
         eq14(users.isActive, true)
       ),
       orderBy: (u, { asc }) => [asc(u.fullName)],
@@ -3508,7 +3680,7 @@ async function getTechnicians(_req, res) {
       }
     });
     const activeOrders = await db.query.workOrders.findMany({
-      where: inArray3(workOrders.status, [
+      where: inArray4(workOrders.status, [
         "DISPATCHED",
         "EN_ROUTE",
         "ON_SITE_ACTIVE",

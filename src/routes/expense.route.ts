@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   createExpenseClaim,
   getAllExpenses,
+  getActiveDispatchExpenses,
   getExpensesByWorkOrder,
 } from '../controllers/expense.controller';
 import { reviewExpenseClaim } from '../controllers/expenseApproval.controller';
@@ -14,6 +15,7 @@ expenseRouter.use(authenticateToken);
 
 expenseRouter.post('/', createExpenseClaim);
 expenseRouter.get('/', getAllExpenses);
+expenseRouter.get('/active', getActiveDispatchExpenses);
 expenseRouter.get('/work-order/:id', getExpensesByWorkOrder);
 expenseRouter.patch(
   '/:id/review',
