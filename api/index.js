@@ -1557,7 +1557,7 @@ async function getWorkOrders(req, res) {
       res.status(401).json({ error: "Unauthorized", message: "Authentication required." });
       return;
     }
-    const { status, priority } = req.query;
+    const { status, priority, page, limit } = req.query;
     let allOrders = await db.query.workOrders.findMany({
       orderBy: [desc(workOrders.createdAt)],
       with: {
@@ -1590,15 +1590,36 @@ async function getWorkOrders(req, res) {
         (wo) => wo.status === "COMPLETED" || wo.status === "BILLED"
       );
     }
+    const countsByFilter = {
+      all: allOrders.length,
+      emergency: allOrders.filter((wo) => wo.priority === "CRITICAL_EMERGENCY").length,
+      active: allOrders.filter((wo) => wo.status === "ON_SITE_ACTIVE" || wo.status === "EN_ROUTE").length,
+      completed: allOrders.filter((wo) => wo.status === "COMPLETED" || wo.status === "BILLED").length
+    };
     if (status && typeof status === "string") {
       allOrders = allOrders.filter((wo) => wo.status === status);
     }
     if (priority && typeof priority === "string") {
       allOrders = allOrders.filter((wo) => wo.priority === priority);
     }
+    const totalCount = allOrders.length;
+    const pageNum = page ? parseInt(page, 10) || 1 : void 0;
+    const limitNum = limit ? parseInt(limit, 10) || void 0 : void 0;
+    let pagedOrders = allOrders;
+    let totalPages = 1;
+    if (limitNum && limitNum > 0) {
+      totalPages = Math.max(1, Math.ceil(totalCount / limitNum));
+      const currentPage = pageNum && pageNum > 0 ? pageNum : 1;
+      const startIndex = (currentPage - 1) * limitNum;
+      pagedOrders = allOrders.slice(startIndex, startIndex + limitNum);
+    }
     res.status(200).json({
-      count: allOrders.length,
-      workOrders: allOrders
+      count: pagedOrders.length,
+      totalCount,
+      totalPages,
+      page: pageNum ?? 1,
+      countsByFilter,
+      workOrders: pagedOrders
     });
   } catch (error) {
     console.error("[WORK ORDER ERROR] Failed to fetch list:", error);

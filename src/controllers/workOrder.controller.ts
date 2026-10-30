@@ -250,7 +250,7 @@ export async function getWorkOrders(req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const { status, priority } = req.query;
+    const { status, priority, page, limit } = req.query;
 
     let allOrders = await db.query.workOrders.findMany({
       orderBy: [desc(workOrders.createdAt)],
@@ -290,6 +290,14 @@ export async function getWorkOrders(req: Request, res: Response): Promise<void> 
       );
     }
 
+    // Filter counts calculated across the role-scoped orders
+    const countsByFilter = {
+      all: allOrders.length,
+      emergency: allOrders.filter((wo) => wo.priority === 'CRITICAL_EMERGENCY').length,
+      active: allOrders.filter((wo) => wo.status === 'ON_SITE_ACTIVE' || wo.status === 'EN_ROUTE').length,
+      completed: allOrders.filter((wo) => wo.status === 'COMPLETED' || wo.status === 'BILLED').length,
+    };
+
     // Optional query param filters
     if (status && typeof status === 'string') {
       allOrders = allOrders.filter((wo) => wo.status === status);
@@ -298,9 +306,27 @@ export async function getWorkOrders(req: Request, res: Response): Promise<void> 
       allOrders = allOrders.filter((wo) => wo.priority === priority);
     }
 
+    const totalCount = allOrders.length;
+    const pageNum = page ? parseInt(page as string, 10) || 1 : undefined;
+    const limitNum = limit ? parseInt(limit as string, 10) || undefined : undefined;
+
+    let pagedOrders = allOrders;
+    let totalPages = 1;
+
+    if (limitNum && limitNum > 0) {
+      totalPages = Math.max(1, Math.ceil(totalCount / limitNum));
+      const currentPage = pageNum && pageNum > 0 ? pageNum : 1;
+      const startIndex = (currentPage - 1) * limitNum;
+      pagedOrders = allOrders.slice(startIndex, startIndex + limitNum);
+    }
+
     res.status(200).json({
-      count: allOrders.length,
-      workOrders: allOrders,
+      count: pagedOrders.length,
+      totalCount,
+      totalPages,
+      page: pageNum ?? 1,
+      countsByFilter,
+      workOrders: pagedOrders,
     });
   } catch (error) {
     console.error('[WORK ORDER ERROR] Failed to fetch list:', error);
